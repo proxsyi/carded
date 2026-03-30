@@ -195,7 +195,6 @@
     }
 
     render();
-    requestAnimationFrame(() => els.app.focus());
   }
 
   function render() {

@@ -1,38 +1,43 @@
+# Carded
 
-Carded is a self-hosted, offline-first flashcard web app built as a Quizlet-style replacement for fast local study. It runs entirely in the browser, stores data in IndexedDB, and supports folders, sets, inline editing, study mode, learn mode, import/export, and installable PWA assets.
+Carded is a self-hosted flashcard PWA for fast local study. It runs entirely in the browser, stores data on-device with IndexedDB, and keeps the stack zero-build-step and static-host friendly.
+
+**Features**
+
+- Folders, sets, and standalone decks
+- Inline editing for set names and card content
+- Study mode with flip cards, keyboard shortcuts, and progress tracking
+- Learn mode with multiple choice review
+- Import/export for plain text card sets
+- Offline support with a service worker and installable manifest
 
 **Run locally**
 
-Serve the project directory over HTTP:
+Use a simple static server:
 
-`npx serve .`
+`python3 -m http.server 8000`
 
-Then open the local URL in your browser. Serving over HTTP is recommended so the service worker and manifest load correctly.
+Then open `http://localhost:8000/`.
 
-**Connect through your browser**
+You can also open `index.html` directly, but serving over HTTP is recommended so the service worker and manifest behave correctly.
 
-Go to https://proxsyi.github.io/carded/
+**GitHub Pages**
+
+https://proxsyi.github.io/carded/
 
 **Install on your device**
 
-Carded works offline as a PWA. Once you visit the site, the service worker caches everything for offline use.
+Visit the GitHub Pages URL, then install it from the browser menu:
 
-- iPhone/iPad — open in Safari → tap share (box with arrow) → Add to Home Screen
-- Android — open in Chrome → tap three-dot menu → Install app
-- Desktop — open in Chrome/Edge → click install icon in address bar
+- iPhone/iPad: Safari → Share → Add to Home Screen
+- Android: Chrome → three-dot menu → Install app
+- Desktop: Chrome or Edge → Install App / address bar install icon
 
-Once installed it runs like a native app with no browser chrome. All data stays on-device.
+Once installed, Carded runs like an app and keeps all data local to the browser on that device.
 
-**Stack**
+**Tech stack**
 
 - Vanilla HTML, CSS, and JavaScript
 - IndexedDB for local persistence
-- Static hosting compatible
-
-**Project files**
-
-- `index.html` — app shell and metadata
-- `styles.css` — design system and layout
-- `app.js` — storage, routing, and UI logic
-- `manifest.webmanifest` — install metadata
-- `sw.js` — offline asset caching
+- Static hosting on GitHub Pages
+- PWA manifest + service worker
