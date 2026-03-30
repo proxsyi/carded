@@ -51,7 +51,14 @@ button {
   cursor: pointer;
 }
 
-*:focus-visible {
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+.inline-editable[contenteditable="true"]:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: 2px;
 }
