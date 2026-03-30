@@ -1,11 +1,8 @@
+node_modules/
 .DS_Store
 .obsidian/
-node_modules/
-dist/
-coverage/
-.idea/
+package.json
+package-lock.json
+*.log
+.env
 .vscode/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
