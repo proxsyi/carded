@@ -13,8 +13,11 @@
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+  outline: none;
 }
 
 html {
@@ -48,13 +51,14 @@ button {
   cursor: pointer;
 }
 
-*:focus {
-  outline: none;
-}
-
 *:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: 2px;
+}
+
+.sortable-chosen,
+.sortable-ghost {
+  outline: none !important;
 }
 
 .hidden {
