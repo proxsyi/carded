@@ -1,0 +1,11 @@
+.DS_Store
+.obsidian/
+node_modules/
+dist/
+coverage/
+.idea/
+.vscode/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

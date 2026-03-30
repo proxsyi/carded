@@ -1,0 +1,17 @@
+{
+  "name": "carded",
+  "version": "1.0.0",
+  "description": "Carded is a self-hosted, offline-first flashcard web app built as a Quizlet-style replacement for fast local study. It runs entirely in the browser, stores data in IndexedDB, and supports folders, sets, inline editing, study mode, learn mode, import/export, and installable PWA assets.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "playwright": "^1.58.2",
+    "serve": "^14.2.6"
+  }
+}
