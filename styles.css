@@ -1,7 +1,7 @@
 :root {
-  --bg-primary: #141417;
-  --bg-secondary: #1c1c21;
-  --bg-tertiary: #26262d;
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #26263a;
+  --bg-tertiary: #31324a;
   --border: #333340;
   --text-primary: #e8e8ed;
   --text-secondary: #9494a3;
@@ -33,6 +33,49 @@ body {
     var(--bg-primary);
   color: var(--text-primary);
   font: 16px/1.5 "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.landing-page,
+.legal-page {
+  width: min(1120px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 48px 0 72px;
+}
+
+.landing-hero {
+  display: grid;
+  gap: 18px;
+  padding: 48px 0 32px;
+}
+
+.landing-brand,
+.landing-actions,
+.landing-footer,
+.landing-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 16px;
+}
+
+.landing-footer {
+  margin-top: 32px;
+  color: var(--text-secondary);
+}
+
+.global-error {
+  position: fixed;
+  inset: auto 16px 16px 16px;
+  z-index: 100;
+  padding: 14px 16px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.95);
 }
 
 button,

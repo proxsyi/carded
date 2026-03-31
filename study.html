@@ -1,53 +1,11 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#141417">
-    <meta name="description" content="Carded is an offline-first flashcard web app for fast study sessions and local-only storage.">
-    <title>Carded</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon.png">
-    <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="./config.js"></script>
-    <script src="./auth.js"></script>
-    <script src="./supabase-db.js"></script>
-    <script src="./db.js"></script>
-    <script src="./sync.js"></script>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=/carded/study">
+    <title>Redirecting…</title>
   </head>
   <body>
-    <div id="storage-error" class="storage-error hidden" role="alertdialog" aria-labelledby="storage-error-title" aria-describedby="storage-error-copy">
-      <div class="storage-error__panel">
-        <p class="eyebrow">Carded</p>
-        <h1 id="storage-error-title">Storage is unavailable</h1>
-        <p id="storage-error-copy">
-          Carded needs browser storage to save your cards. Try using a regular (non-private) browser window.
-        </p>
-      </div>
-    </div>
-
-    <div id="app-shell" class="app-shell hidden">
-      <header class="topbar">
-        <div class="topbar__brand">
-          <a href="./index.html#/" class="brand-link" aria-label="Go to home">
-            <span class="brand-mark" aria-hidden="true">🃏</span>
-            <span class="brand-text">Carded</span>
-          </a>
-        </div>
-        <div class="topbar__actions" id="header-actions"></div>
-      </header>
-
-      <main id="app" class="page"></main>
-    </div>
-
-    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
-    <div id="modal-root"></div>
-
-    <script src="./app.js"></script>
+    <script>window.location.replace("/carded/study" + window.location.search + window.location.hash);</script>
   </body>
 </html>

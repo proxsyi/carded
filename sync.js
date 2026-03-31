@@ -16,7 +16,7 @@
 
   function readQueue() {
     try {
-      const raw = localStorage.getItem(SYNC_QUEUE_KEY);
+      const raw = window.CardedUtils.safeGet(SYNC_QUEUE_KEY);
       return raw ? JSON.parse(raw) : [];
     } catch (error) {
       console.error(error);
@@ -25,7 +25,7 @@
   }
 
   function writeQueue(queue) {
-    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue.slice(-MAX_QUEUE_ENTRIES)));
+    window.CardedUtils.safeSet(SYNC_QUEUE_KEY, JSON.stringify(queue.slice(-MAX_QUEUE_ENTRIES)));
   }
 
   function addToQueue(entry) {

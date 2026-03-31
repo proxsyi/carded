@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> auth -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Login</title>
+    <meta name="description" content="Log in to Carded with Google, GitHub, or email.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <link rel="stylesheet" href="/carded/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="/carded/config.js" defer></script>
+    <script src="/carded/utils.js" defer></script>
+    <script src="/carded/auth-guard.js" defer></script>
+    <script src="/carded/auth.js" defer></script>
+  </head>
+  <body>
+    <main class="auth-shell" id="main">
+      <section class="auth-card">
+        <p class="eyebrow">Carded</p>
+        <h1>Log in to Carded</h1>
+        <p class="auth-copy">Choose the sign-in method that fits your account.</p>
+        <div class="stack">
+          <button class="ghost-button auth-button" data-oauth="google" type="button">Sign in with Google</button>
+          <button class="ghost-button auth-button" data-oauth="github" type="button">Sign in with GitHub</button>
+          <a class="ghost-button auth-button" href="/carded/signin">Sign in with Email</a>
+        </div>
+        <div class="auth-divider"><span>or</span></div>
+        <p class="auth-footer">Don't have an account? <a href="/carded/signup">Sign up</a></p>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", async function () {
+        await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+        document.querySelectorAll("[data-oauth]").forEach(function (button) {
+          button.addEventListener("click", async function () {
+            try {
+              await window.CardedAuth.signInWithOAuth(button.dataset.oauth);
+            } catch (error) {
+              window.CardedAuth.showToast("Sign-in was cancelled. Please try again.");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

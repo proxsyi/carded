@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Page Not Found</title>
+    <meta name="description" content="Carded page not found.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <link rel="stylesheet" href="/carded/styles.css">
+  </head>
+  <body>
+    <main class="legal-page" id="main">
+      <div class="landing-brand">
+        <span class="brand-mark" aria-hidden="true">🃏</span>
+        <span class="brand-text">Carded</span>
+      </div>
+      <h1>Page not found</h1>
+      <p class="section-copy">The page you requested does not exist, or it moved to a clean URL.</p>
+      <a class="button" href="/carded">Back home</a>
+    </main>
+    <script>
+      (function () {
+        var path = window.location.pathname;
+        var hash = window.location.hash || "";
+        if (hash.indexOf("#/") === 0) {
+          var parts = hash.slice(2).split("/").filter(Boolean);
+          if (!parts.length) {
+            window.location.replace("/carded/library");
+            return;
+          }
+          if (parts[0] === "folder" && parts[1]) {
+            window.location.replace("/carded/library?folder=" + encodeURIComponent(parts[1]));
+            return;
+          }
+          if (parts[0] === "set" && parts[1]) {
+            window.location.replace("/carded/library?set=" + encodeURIComponent(parts[1]));
+            return;
+          }
+          if ((parts[0] === "study" || parts[0] === "learn") && parts[1]) {
+            window.location.replace("/carded/study?set=" + encodeURIComponent(parts[1]) + "&mode=" + (parts[0] === "learn" ? "learn" : "study"));
+            return;
+          }
+          return;
+        }
+        if (/\.html$/.test(path)) {
+          window.location.replace(path.replace(/\/index\.html$/, "/").replace(/\.html$/, "").replace(/\/$/, ""));
+        }
+      })();
+    </script>
+  </body>
+</html>

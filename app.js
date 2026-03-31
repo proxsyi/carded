@@ -16,7 +16,7 @@
     stats: { id: "stats", currentStreak: 0, lastStudiedDate: "", longestStreak: 0 },
     route: { view: "home" },
     search: "",
-    sort: localStorage.getItem(SORT_KEY) || "alphabetical",
+    sort: window.CardedUtils.safeGet(SORT_KEY) || "alphabetical",
     userId: null,
     userEmail: "",
     online: true,
@@ -34,22 +34,29 @@
   };
 
   const els = {
-    app: document.getElementById("app"),
-    appShell: document.getElementById("app-shell"),
-    storageError: document.getElementById("storage-error"),
-    toastRoot: document.getElementById("toast-root"),
-    modalRoot: document.getElementById("modal-root"),
-    headerActions: document.getElementById("header-actions"),
+    app: null,
+    appShell: null,
+    storageError: null,
+    toastRoot: null,
+    modalRoot: null,
+    headerActions: null,
   };
   let writeQueue = Promise.resolve();
 
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
+    els.app = document.getElementById("app");
+    els.appShell = document.getElementById("app-shell");
+    els.storageError = document.getElementById("storage-error");
+    els.toastRoot = document.getElementById("toast-root");
+    els.modalRoot = document.getElementById("modal-root");
+    els.headerActions = document.getElementById("header-actions");
+
     let session = null;
 
-    if (window.CardedAuth && typeof window.CardedAuth.authGuard === "function") {
-      session = await window.CardedAuth.authGuard().catch((error) => {
+    if (window.CardedAuthGuard && typeof window.CardedAuthGuard.guardPage === "function") {
+      session = await window.CardedAuthGuard.guardPage({ requiresAuth: true }).catch((error) => {
         console.error(error);
         return null;
       });
@@ -87,7 +94,6 @@
 
     bindGlobalEvents();
     registerServiceWorker();
-    window.addEventListener("hashchange", handleRouteChange);
     window.addEventListener("carded:data-changed", reloadFromCacheAndRender);
     window.addEventListener("carded:connectivity", handleConnectivityChange);
     window.addEventListener("carded:auth-state", handleAuthEvent);
@@ -409,7 +415,7 @@
   }
 
   async function maybePromptLegacyMigration() {
-    if (localStorage.getItem(getMigrationKey(MIGRATION_DONE_KEY)) || localStorage.getItem(getMigrationKey(MIGRATION_SKIPPED_KEY))) {
+    if (window.CardedUtils.safeGet(getMigrationKey(MIGRATION_DONE_KEY)) || window.CardedUtils.safeGet(getMigrationKey(MIGRATION_SKIPPED_KEY))) {
       return;
     }
 
@@ -421,7 +427,7 @@
 
     const totalItems = legacy.folders.length + legacy.sets.length + legacy.cards.length;
     if (!totalItems) {
-      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), "empty");
+      window.CardedUtils.safeSet(getMigrationKey(MIGRATION_DONE_KEY), "empty");
       return;
     }
 
@@ -430,7 +436,7 @@
       copy: `We found ${legacy.folders.length} folders, ${legacy.sets.length} sets, and ${legacy.cards.length} cards saved locally. Upload them to your new account?`,
       confirmLabel: "Upload data",
       onCancel: function () {
-        localStorage.setItem(getMigrationKey(MIGRATION_SKIPPED_KEY), nowIso());
+        window.CardedUtils.safeSet(getMigrationKey(MIGRATION_SKIPPED_KEY), nowIso());
       },
       onConfirm: async function () {
         state.modal = null;
@@ -499,7 +505,7 @@
       }
 
       await clearLegacyDatabase();
-      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), nowIso());
+      window.CardedUtils.safeSet(getMigrationKey(MIGRATION_DONE_KEY), nowIso());
       await window.CardedSync.refetchLatest();
       await loadAll();
       render();
@@ -522,28 +528,56 @@
   }
 
   function handleRouteChange() {
-    const hash = location.hash.replace(/^#/, "") || "/";
-    const parts = hash.split("/").filter(Boolean);
+    const path = window.CardedUtils.currentPath();
+    const params = new URLSearchParams(window.location.search);
+    const folderId = params.get("folder");
+    const setId = params.get("set");
+    const mode = params.get("mode");
 
-    if (parts.length === 0) {
-      state.route = { view: "home" };
-    } else if (parts[0] === "folder" && parts[1]) {
-      state.route = { view: "folder", folderId: parts[1] };
-    } else if (parts[0] === "set" && parts[1]) {
-      state.route = { view: "set", setId: parts[1] };
-    } else if (parts[0] === "study" && parts[1]) {
-      state.route = { view: "study", setId: parts[1] };
-      initStudySession(parts[1]);
-    } else if (parts[0] === "learn" && parts[1]) {
-      state.route = { view: "learn", setId: parts[1] };
-      initLearnSession(parts[1]);
+    if (path === window.BASE_PATH + "/study" && setId) {
+      if (mode === "learn") {
+        state.route = { view: "learn", setId: setId };
+        initLearnSession(setId);
+      } else {
+        state.route = { view: "study", setId: setId };
+        initStudySession(setId);
+      }
+    } else if (path === window.BASE_PATH + "/library" && setId) {
+      state.route = { view: "set", setId: setId };
+    } else if (path === window.BASE_PATH + "/library" && folderId) {
+      state.route = { view: "folder", folderId: folderId };
     } else {
       state.route = { view: "home" };
-      location.hash = "#/";
-      return;
     }
 
     render();
+  }
+
+  function buildLibraryHref(options) {
+    const params = {};
+    if (options && options.folderId) params.folder = options.folderId;
+    if (options && options.setId) params.set = options.setId;
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", params);
+  }
+
+  function buildStudyHref(setId, mode) {
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", {
+      set: setId,
+      mode: mode === "learn" ? "learn" : "study",
+    });
+  }
+
+  function navigateToLibrary(options, replace) {
+    const href = buildLibraryHref(options);
+    if (replace) {
+      window.location.replace(href);
+      return;
+    }
+    window.location.assign(href);
+  }
+
+  function navigateToStudy(setId, mode) {
+    window.location.assign(buildStudyHref(setId, mode));
   }
 
   function render() {
@@ -587,7 +621,7 @@
     els.headerActions.innerHTML = `
       <button class="ghost-button" data-action="create-folder">New folder</button>
       <button class="button" data-action="create-set">New set</button>
-      <a class="account-link" href="./account.html" aria-label="Open account">
+      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
         <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
       </a>
     `;
@@ -642,7 +676,7 @@
   function renderFolderView(folderId) {
     const folder = getFolder(folderId);
     if (!folder) {
-      location.hash = "#/";
+      navigateToLibrary(null, true);
       return;
     }
 
@@ -650,7 +684,7 @@
     els.app.appendChild(createElement(`
       <section class="stack">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
+          { href: buildLibraryHref(), label: "Home" },
           { label: escapeHtml(folder.name) }
         ])}
         <div class="view-header">
@@ -687,7 +721,7 @@
   function renderSetView(setId) {
     const set = getSet(setId);
     if (!set) {
-      location.hash = "#/";
+      navigateToLibrary(null, true);
       return;
     }
 
@@ -699,8 +733,8 @@
     els.app.appendChild(createElement(`
       <section class="set-layout">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          ...(folder ? [{ href: `#/folder/${folder.id}`, label: escapeHtml(folder.name) }] : []),
+          { href: buildLibraryHref(), label: "Home" },
+          ...(folder ? [{ href: buildLibraryHref({ folderId: folder.id }), label: escapeHtml(folder.name) }] : []),
           { label: escapeHtml(set.name) }
         ])}
         <div class="view-header">
@@ -808,13 +842,13 @@
   function renderStudyView(setId) {
     const set = getSet(setId);
     if (!set) {
-      location.hash = "#/";
+      navigateToLibrary(null, true);
       return;
     }
 
     const session = state.studySession;
     if (!session) {
-      location.hash = `#/set/${setId}`;
+      navigateToLibrary({ setId: setId }, true);
       return;
     }
 
@@ -831,8 +865,8 @@
     els.app.appendChild(createElement(`
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Study" }
         ])}
         <div class="session-toolbar">
@@ -874,7 +908,7 @@
     const set = getSet(setId);
     const session = state.learnSession;
     if (!set || !session) {
-      location.hash = `#/set/${setId}`;
+      navigateToLibrary({ setId: setId }, true);
       return;
     }
 
@@ -887,8 +921,8 @@
     els.app.appendChild(createElement(`
       <section class="learn-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Learn" }
         ])}
         <div class="session-toolbar">
@@ -927,8 +961,8 @@
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Study complete" }
         ])}
         <div class="summary-card">
@@ -949,8 +983,8 @@
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Round summary" }
         ])}
         <div class="summary-card" style="width:min(760px,100%)">
@@ -1040,7 +1074,7 @@
           <div class="meta-item"><span class="meta-label">Cards</span><span>${totalCards}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="#/folder/${folder.id}">Open folder</a>
+          <a class="tile__open" href="${buildLibraryHref({ folderId: folder.id })}">Open folder</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
@@ -1071,7 +1105,7 @@
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(set.createdAt)}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="#/set/${set.id}">Open set</a>
+          <a class="tile__open" href="${buildLibraryHref({ setId: set.id })}">Open set</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
@@ -1160,12 +1194,12 @@
     }
 
     if (target.dataset.openFolder) {
-      location.hash = `#/folder/${target.dataset.openFolder}`;
+      navigateToLibrary({ folderId: target.dataset.openFolder });
       return;
     }
 
     if (target.dataset.openSet) {
-      location.hash = `#/set/${target.dataset.openSet}`;
+      navigateToLibrary({ setId: target.dataset.openSet });
       return;
     }
 
@@ -1196,13 +1230,13 @@
         }
         break;
       case "start-study":
-        location.hash = `#/study/${target.dataset.setId}`;
+        navigateToStudy(target.dataset.setId, "study");
         break;
       case "start-learn":
-        location.hash = `#/learn/${target.dataset.setId}`;
+        navigateToStudy(target.dataset.setId, "learn");
         break;
       case "back-to-set":
-        location.hash = `#/set/${target.dataset.setId}`;
+        navigateToLibrary({ setId: target.dataset.setId });
         break;
       case "flip-study-card":
         if (state.studySession) {
@@ -1249,7 +1283,7 @@
         exportAllSets();
         break;
       case "dismiss-backup-banner":
-        localStorage.setItem(BACKUP_DISMISS_KEY, String(Date.now()));
+        window.CardedUtils.safeSet(BACKUP_DISMISS_KEY, String(Date.now()));
         render();
         break;
       case "dismiss-toast":
@@ -1318,7 +1352,7 @@
 
     if (target.matches("[data-action='sort-library']")) {
       state.sort = target.value;
-      localStorage.setItem(SORT_KEY, state.sort);
+      window.CardedUtils.safeSet(SORT_KEY, state.sort);
       render();
       return;
     }
@@ -1460,16 +1494,16 @@
 
   function handleEscapeNavigation() {
     if (state.route.view === "study" || state.route.view === "learn") {
-      location.hash = `#/set/${state.route.setId}`;
+      navigateToLibrary({ setId: state.route.setId });
       return;
     }
     if (state.route.view === "set") {
       const set = getSet(state.route.setId);
-      location.hash = set?.folderId ? `#/folder/${set.folderId}` : "#/";
+      navigateToLibrary(set?.folderId ? { folderId: set.folderId } : null);
       return;
     }
     if (state.route.view === "folder") {
-      location.hash = "#/";
+      navigateToLibrary();
     }
   }
 
@@ -1532,7 +1566,7 @@
     if (!name || !name.trim()) return;
     const set = await createSet(name.trim(), folderId || null);
     render();
-    location.hash = `#/set/${set.id}`;
+    navigateToLibrary({ setId: set.id });
   }
 
   function confirmDeleteFolder(folderId) {
@@ -1562,7 +1596,7 @@
         await deleteSet(setId);
         state.modal = null;
         if (state.route.view === "set" && state.route.setId === setId) {
-          location.hash = "#/";
+          navigateToLibrary();
         } else {
           render();
         }
@@ -1805,7 +1839,7 @@
       .map((card) => `${card.term}, ${card.definition}`)
       .join("\n");
     downloadTextFile(`${sanitizeFileName(set.name)}.txt`, text);
-    localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Set exported");
     render();
   }
@@ -1816,7 +1850,7 @@
       return `# ${set.name}\n${lines}`;
     });
     downloadTextFile("carded-backup.txt", sections.join("\n\n"));
-    localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Backup exported");
     render();
   }
@@ -2063,8 +2097,8 @@
 
   function shouldShowBackupBanner(totalCards) {
     if (totalCards <= 100) return false;
-    const lastExport = Number(localStorage.getItem(LAST_EXPORT_KEY) || 0);
-    const dismissed = Number(localStorage.getItem(BACKUP_DISMISS_KEY) || 0);
+    const lastExport = Number(window.CardedUtils.safeGet(LAST_EXPORT_KEY) || 0);
+    const dismissed = Number(window.CardedUtils.safeGet(BACKUP_DISMISS_KEY) || 0);
     const lastSeen = Math.max(lastExport, dismissed);
     return !lastSeen || Date.now() - lastSeen > 7 * DAY_MS;
   }

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> auth -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Sign Up</title>
+    <meta name="description" content="Create your Carded account and sync your flashcards everywhere.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <link rel="stylesheet" href="/carded/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="/carded/config.js" defer></script>
+    <script src="/carded/utils.js" defer></script>
+    <script src="/carded/auth-guard.js" defer></script>
+    <script src="/carded/auth.js" defer></script>
+  </head>
+  <body>
+    <main class="auth-shell" id="main">
+      <section class="auth-card">
+        <p class="eyebrow">Carded</p>
+        <h1>Create your account</h1>
+        <p class="auth-copy">Sync your library and keep studying offline.</p>
+
+        <form id="signup-form" class="stack">
+          <div class="field">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" name="email" class="input" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="signup-password">Password</label>
+            <input id="signup-password" name="password" class="input" type="password" autocomplete="new-password" required>
+          </div>
+          <div class="field">
+            <label for="signup-confirm-password">Confirm password</label>
+            <input id="signup-confirm-password" name="confirmPassword" class="input" type="password" autocomplete="new-password" required>
+          </div>
+          <button class="button" type="submit">Create account</button>
+        </form>
+
+        <div class="auth-divider"><span>or</span></div>
+
+        <div class="stack">
+          <button class="ghost-button auth-button" data-oauth="google" type="button">Sign up with Google</button>
+          <button class="ghost-button auth-button" data-oauth="github" type="button">Sign up with GitHub</button>
+        </div>
+
+        <div class="auth-footer">
+          <p>Already have an account? <a href="/carded/login">Sign in</a></p>
+        </div>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", async function () {
+        await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+
+        document.getElementById("signup-form").addEventListener("submit", async function (event) {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          const password = String(data.get("password") || "");
+          const confirmPassword = String(data.get("confirmPassword") || "");
+          if (password !== confirmPassword) {
+            window.CardedAuth.showToast("Passwords do not match.");
+            return;
+          }
+          try {
+            await window.CardedAuth.signUpWithEmail(String(data.get("email") || "").trim(), password);
+            window.CardedAuthGuard.redirectAuthedHome();
+          } catch (error) {
+            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+          }
+        });
+
+        document.querySelectorAll("[data-oauth]").forEach(function (button) {
+          button.addEventListener("click", async function () {
+            try {
+              await window.CardedAuth.signInWithOAuth(button.dataset.oauth);
+            } catch (error) {
+              window.CardedAuth.showToast("Sign-in was cancelled. Please try again.");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

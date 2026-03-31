@@ -21,7 +21,7 @@ Use a simple static server:
 
 `python3 -m http.server 8000`
 
-Then open `http://localhost:8000/`.
+Then open the local server root in your browser and navigate to `/carded/`.
 
 You can also open `index.html` directly, but serving over HTTP is recommended so the service worker and manifest behave correctly.
 
