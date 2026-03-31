@@ -40,6 +40,10 @@
               <strong id="account-email">-</strong>
             </div>
             <div class="field">
+              <span class="meta-label">Provider</span>
+              <strong id="account-provider">-</strong>
+            </div>
+            <div class="field">
               <span class="meta-label">Account created</span>
               <strong id="account-created">-</strong>
             </div>
@@ -132,6 +136,7 @@
         toggleRecoveryMode(window.CardedAuth.isPasswordRecoveryMode());
         accountView.classList.remove("hidden");
         document.getElementById("account-email").textContent = session.user.email || "-";
+        document.getElementById("account-provider").textContent = "Signed in with " + String((session.user.app_metadata && session.user.app_metadata.provider) || "email");
         document.getElementById("account-created").textContent = formatDate(session.user.created_at);
 
         try {

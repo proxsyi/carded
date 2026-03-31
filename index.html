@@ -27,6 +27,10 @@
   </head>
   <body>
     <main class="landing-page" id="main">
+      <div id="install-banner" class="install-banner hidden">
+        <p>Install Carded for offline access.</p>
+        <button id="install-button" class="button" type="button">Install</button>
+      </div>
       <section class="landing-hero">
         <div class="landing-brand">
           <span class="brand-mark" aria-hidden="true">🃏</span>
@@ -93,6 +97,26 @@
         }
         if (window.CardedAuthGuard.maybeHandleRecoveryRedirect()) return;
         await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+        var deferredPrompt = null;
+        window.addEventListener("beforeinstallprompt", function (event) {
+          event.preventDefault();
+          deferredPrompt = event;
+          var count = Number(window.CardedUtils.safeGet("carded_install_prompt_count") || 0) + 1;
+          window.CardedUtils.safeSet("carded_install_prompt_count", String(count));
+          if (count > 1 && !window.CardedUtils.safeGet("carded_install_prompt_dismissed")) {
+            document.getElementById("install-banner").classList.remove("hidden");
+          }
+        });
+        document.getElementById("install-button").addEventListener("click", async function () {
+          if (!deferredPrompt) return;
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice.catch(function () {
+            return null;
+          });
+          window.CardedUtils.safeSet("carded_install_prompt_dismissed", "1");
+          document.getElementById("install-banner").classList.add("hidden");
+          deferredPrompt = null;
+        });
       });
     </script>
   </body>

@@ -27,6 +27,14 @@
     <script src="/carded/app.js" defer></script>
   </head>
   <body>
+    <div id="auth-loading" class="auth-loading">
+      <div class="auth-loading__spinner" aria-hidden="true"></div>
+      <p>Signing you in...</p>
+    </div>
+    <div id="install-banner" class="install-banner hidden">
+      <p>Install Carded for offline access.</p>
+      <button id="install-button" class="button" type="button">Install</button>
+    </div>
     <div id="storage-error" class="storage-error hidden" role="alertdialog" aria-labelledby="storage-error-title" aria-describedby="storage-error-copy">
       <div class="storage-error__panel">
         <p class="eyebrow">Carded</p>
@@ -51,6 +59,26 @@
     <script defer>
       document.addEventListener("DOMContentLoaded", async function () {
         await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        var deferredPrompt = null;
+        window.addEventListener("beforeinstallprompt", function (event) {
+          event.preventDefault();
+          deferredPrompt = event;
+          var count = Number(window.CardedUtils.safeGet("carded_install_prompt_count") || 0) + 1;
+          window.CardedUtils.safeSet("carded_install_prompt_count", String(count));
+          if (count > 1 && !window.CardedUtils.safeGet("carded_install_prompt_dismissed")) {
+            document.getElementById("install-banner").classList.remove("hidden");
+          }
+        });
+        document.getElementById("install-button").addEventListener("click", async function () {
+          if (!deferredPrompt) return;
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice.catch(function () {
+            return null;
+          });
+          window.CardedUtils.safeSet("carded_install_prompt_dismissed", "1");
+          document.getElementById("install-banner").classList.add("hidden");
+          deferredPrompt = null;
+        });
       });
     </script>
   </body>

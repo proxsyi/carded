@@ -34,7 +34,10 @@
           </div>
           <div class="field">
             <label for="signin-password">Password</label>
-            <input id="signin-password" name="password" class="input" type="password" autocomplete="current-password" required>
+            <div class="password-field">
+              <input id="signin-password" name="password" class="input" type="password" autocomplete="current-password" required>
+              <button class="ghost-button password-toggle" data-toggle-password="signin-password" type="button">Show</button>
+            </div>
           </div>
           <button class="button" type="submit">Sign in</button>
         </form>
@@ -62,6 +65,14 @@
         const signInForm = document.getElementById("signin-form");
         const resetForm = document.getElementById("reset-form");
         const toggle = document.getElementById("forgot-password-toggle");
+        document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const input = document.getElementById(button.dataset.togglePassword);
+            if (!input) return;
+            input.type = input.type === "password" ? "text" : "password";
+            button.textContent = input.type === "password" ? "Show" : "Hide";
+          });
+        });
 
         signInForm.addEventListener("submit", async function (event) {
           event.preventDefault();

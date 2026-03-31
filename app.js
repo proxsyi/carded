@@ -70,6 +70,13 @@
 
     state.userId = session.user.id;
     state.userEmail = session.user.email || "";
+    if (
+      window.location.pathname === window.BASE_PATH + "/library" &&
+      (window.location.search.includes("code=") || window.location.hash.includes("access_token="))
+    ) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    document.getElementById("auth-loading")?.classList.add("hidden");
     els.appShell.classList.remove("hidden");
     renderLoadingState();
 

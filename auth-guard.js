@@ -73,6 +73,18 @@
       return session;
     }
 
+    if (
+      requiresAuth &&
+      session &&
+      getCurrentAppPath() === window.BASE_PATH + "/library"
+    ) {
+      const returnTo = readReturnUrl();
+      if (returnTo && window.CardedUtils.isAppPath(returnTo) && returnTo !== window.BASE_PATH + "/library") {
+        redirectAuthedHome();
+        return session;
+      }
+    }
+
     return session;
   }
 
