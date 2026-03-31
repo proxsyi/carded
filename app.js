@@ -1,11 +1,11 @@
 (function () {
   "use strict";
 
-  const DB_NAME = "FlashCardsDB";
-  const DB_VERSION = 1;
   const SORT_KEY = "carded.sort";
   const BACKUP_DISMISS_KEY = "carded.backupDismissedAt";
   const LAST_EXPORT_KEY = "carded.lastExportAt";
+  const MIGRATION_DONE_KEY = "carded_v1_migration_done";
+  const MIGRATION_SKIPPED_KEY = "carded_v1_migration_skipped";
   const MAX_NAME_LENGTH = 40;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -13,10 +13,15 @@
     folders: [],
     sets: [],
     cards: [],
-    stats: { id: "global", currentStreak: 0, lastStudiedDate: "", longestStreak: 0 },
+    stats: { id: "stats", currentStreak: 0, lastStudiedDate: "", longestStreak: 0 },
     route: { view: "home" },
     search: "",
     sort: localStorage.getItem(SORT_KEY) || "alphabetical",
+    userId: null,
+    userEmail: "",
+    online: true,
+    isLoading: true,
+    longLoad: false,
     drag: {
       setId: null,
       cardId: null,
@@ -36,92 +41,63 @@
     modalRoot: document.getElementById("modal-root"),
     headerActions: document.getElementById("header-actions"),
   };
-
-  let db;
   let writeQueue = Promise.resolve();
 
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
+    let session = null;
+
     if (window.CardedAuth && typeof window.CardedAuth.authGuard === "function") {
-      const session = await window.CardedAuth.authGuard().catch((error) => {
+      session = await window.CardedAuth.authGuard().catch((error) => {
         console.error(error);
         return null;
       });
       if (!session) return;
-
-      if (typeof window.CardedAuth.onAuthStateChange === "function") {
-        window.CardedAuth.onAuthStateChange((event) => {
-          if (event === "USER_UPDATED") {
-            render();
-          }
-        });
-      }
     }
 
-    if (!("indexedDB" in window)) {
+    if (!("indexedDB" in window) || !window.CardedDB || !window.CardedSync) {
       showStorageError();
       return;
     }
 
+    state.userId = session.user.id;
+    state.userEmail = session.user.email || "";
+    els.appShell.classList.remove("hidden");
+    renderLoadingState();
+
+    const slowLoadTimer = window.setTimeout(function () {
+      state.longLoad = true;
+      renderLoadingState();
+    }, 5000);
+
     try {
-      db = await openDatabase();
-      await ensureStatsRow();
-      await loadAll();
+      const bundle = await window.CardedSync.initSync(state.userId);
+      state.online = window.CardedSync.isOnline();
+      await loadAll(bundle);
     } catch (error) {
       console.error(error);
       showStorageError();
       return;
+    } finally {
+      window.clearTimeout(slowLoadTimer);
+      state.isLoading = false;
+      state.longLoad = false;
     }
 
     bindGlobalEvents();
     registerServiceWorker();
     window.addEventListener("hashchange", handleRouteChange);
+    window.addEventListener("carded:data-changed", reloadFromCacheAndRender);
+    window.addEventListener("carded:connectivity", handleConnectivityChange);
+    window.addEventListener("carded:auth-state", handleAuthEvent);
     handleRouteChange();
-    els.appShell.classList.remove("hidden");
+    maybePromptLegacyMigration();
     document.body.classList.add("ready");
   }
 
   function showStorageError() {
     els.storageError.classList.remove("hidden");
-  }
-
-  function openDatabase() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const database = event.target.result;
-
-        if (!database.objectStoreNames.contains("folders")) {
-          const folders = database.createObjectStore("folders", { keyPath: "id" });
-          folders.createIndex("order", "order", { unique: false });
-        }
-
-        if (!database.objectStoreNames.contains("sets")) {
-          const sets = database.createObjectStore("sets", { keyPath: "id" });
-          sets.createIndex("folderId", "folderId", { unique: false });
-          sets.createIndex("order", "order", { unique: false });
-        }
-
-        if (!database.objectStoreNames.contains("cards")) {
-          const cards = database.createObjectStore("cards", { keyPath: "id" });
-          cards.createIndex("setId", "setId", { unique: false });
-          cards.createIndex("order", "order", { unique: false });
-        }
-
-        if (!database.objectStoreNames.contains("stats")) {
-          database.createObjectStore("stats", { keyPath: "id" });
-        }
-      };
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  function tx(storeNames, mode) {
-    return db.transaction(storeNames, mode);
   }
 
   function enqueueWrite(work) {
@@ -131,50 +107,407 @@
     return next;
   }
 
-  function requestToPromise(request) {
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+  async function loadAll(bundle) {
+    const cached = bundle || await window.CardedDB.getAllUserData(state.userId);
+    const progressByCardId = new Map((cached.progress || []).map(function (row) {
+      return [row.card_id, row];
+    }));
+
+    state.folders = (cached.folders || []).map(mapFolderRowToState);
+    state.sets = (cached.sets || []).map(mapSetRowToState);
+    state.cards = (cached.cards || []).map(function (row) {
+      return mapCardRowToState(row, progressByCardId.get(row.id));
     });
+    state.stats = mapStatsRowToState(cached.stats);
   }
 
-  async function ensureStatsRow() {
-    const transaction = tx(["stats"], "readwrite");
-    const store = transaction.objectStore("stats");
-    const existing = await requestToPromise(store.get("global"));
-    if (!existing) {
-      store.put({ id: "global", currentStreak: 0, lastStudiedDate: "", longestStreak: 0 });
+  async function reloadFromCacheAndRender() {
+    await loadAll();
+    render();
+  }
+
+  function handleConnectivityChange(event) {
+    state.online = Boolean(event.detail && event.detail.online);
+    render();
+  }
+
+  function handleAuthEvent(event) {
+    if (event.detail.event === "USER_UPDATED" && event.detail.session && event.detail.session.user) {
+      state.userEmail = event.detail.session.user.email || state.userEmail;
+      render();
     }
-    await transactionDone(transaction);
   }
 
-  function transactionDone(transaction) {
-    return new Promise((resolve, reject) => {
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
+  function renderLoadingState() {
+    els.app.innerHTML = `
+      <section class="stack">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-copy"></div>
+        <div class="tile-grid">
+          <div class="skeleton skeleton-tile"></div>
+          <div class="skeleton skeleton-tile"></div>
+          <div class="skeleton skeleton-tile"></div>
+        </div>
+        ${state.longLoad ? `<p class="section-copy">Taking longer than usual...</p>` : ""}
+      </section>
+    `;
+  }
+
+  function mapFolderRowToState(row) {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      order: row.order || 0,
+      createdAt: toMillis(row.created_at) || Date.now(),
+      updatedAt: row.updated_at || null,
+    };
+  }
+
+  function mapSetRowToState(row) {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      folderId: row.folder_id || null,
+      name: row.name,
+      order: row.order || 0,
+      createdAt: toMillis(row.created_at) || Date.now(),
+      updatedAt: row.updated_at || null,
+      lastStudied: toMillis(row.last_studied),
+      bestScore: row.best_score ?? null,
+      timesStudied: row.times_studied || 0,
+    };
+  }
+
+  function mapCardRowToState(row, progress) {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      setId: row.set_id,
+      term: row.term,
+      definition: row.definition,
+      order: row.order || 0,
+      createdAt: toMillis(row.created_at) || Date.now(),
+      updatedAt: row.updated_at || null,
+      progressId: progress ? progress.id : null,
+      correctCount: row.correct_count ?? (progress ? (progress.correct_count || 0) : 0),
+      incorrectCount: row.incorrect_count ?? (progress ? (progress.incorrect_count || 0) : 0),
+      lastSeen: toMillis(row.last_seen) || (progress ? toMillis(progress.last_seen) : null),
+      box: row.box ?? Math.max(1, Math.min(3, (progress && progress.repetitions ? progress.repetitions : 0) + 1)),
+    };
+  }
+
+  function mapStatsRowToState(row) {
+    if (!row) {
+      return {
+        id: "stats",
+        currentStreak: 0,
+        lastStudiedDate: "",
+        longestStreak: 0,
+        totalStudyTime: 0,
+        totalCardsReviewed: 0,
+        totalSessions: 0,
+      };
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      totalStudyTime: row.total_study_time || 0,
+      totalCardsReviewed: row.total_cards_reviewed || 0,
+      totalSessions: row.total_sessions || 0,
+      currentStreak: row.current_streak || 0,
+      longestStreak: row.longest_streak || 0,
+      lastStudiedDate: row.last_studied_date || "",
+      updatedAt: row.updated_at || null,
+    };
+  }
+
+  function toMillis(value) {
+    return value ? Date.parse(value) : null;
+  }
+
+  function toIso(value) {
+    return value ? new Date(value).toISOString() : null;
+  }
+
+  function nowIso() {
+    return new Date().toISOString();
+  }
+
+  function getMigrationKey(prefix) {
+    return `${prefix}:${state.userId || "guest"}`;
+  }
+
+  function folderToRow(folder) {
+    return {
+      id: folder.id,
+      user_id: state.userId,
+      name: folder.name,
+      order: folder.order,
+      created_at: toIso(folder.createdAt) || nowIso(),
+      updated_at: nowIso(),
+    };
+  }
+
+  function setToRow(set) {
+    return {
+      id: set.id,
+      user_id: state.userId,
+      folder_id: set.folderId,
+      name: set.name,
+      order: set.order,
+      created_at: toIso(set.createdAt) || nowIso(),
+      updated_at: nowIso(),
+      last_studied: toIso(set.lastStudied),
+      best_score: set.bestScore,
+      times_studied: set.timesStudied || 0,
+    };
+  }
+
+  function cardToRow(card) {
+    return {
+      id: card.id,
+      set_id: card.setId,
+      term: card.term,
+      definition: card.definition,
+      order: card.order,
+      created_at: toIso(card.createdAt) || nowIso(),
+      updated_at: nowIso(),
+      box: card.box || 1,
+      last_seen: toIso(card.lastSeen),
+      correct_count: card.correctCount || 0,
+      incorrect_count: card.incorrectCount || 0,
+    };
+  }
+
+  function progressToRow(card) {
+    return {
+      id: card.progressId || crypto.randomUUID(),
+      user_id: state.userId,
+      card_id: card.id,
+      ease_factor: 2.5,
+      interval: 0,
+      repetitions: Math.max(0, (card.box || 1) - 1),
+      next_review: null,
+      correct_count: card.correctCount || 0,
+      incorrect_count: card.incorrectCount || 0,
+      last_seen: toIso(card.lastSeen),
+      updated_at: nowIso(),
+    };
+  }
+
+  function statsToRow() {
+    return {
+      id: state.stats.id,
+      user_id: state.userId,
+      total_study_time: state.stats.totalStudyTime || 0,
+      total_cards_reviewed: state.stats.totalCardsReviewed || 0,
+      total_sessions: state.stats.totalSessions || 0,
+      current_streak: state.stats.currentStreak || 0,
+      longest_streak: state.stats.longestStreak || 0,
+      last_studied_date: state.stats.lastStudiedDate || null,
+      updated_at: nowIso(),
+    };
+  }
+
+  async function persistEntity(table, operation, row) {
+    return enqueueWrite(async function () {
+      if (operation === "delete") {
+        await window.CardedDB.deleteById(table, row.id);
+      } else {
+        await window.CardedDB.put(table, row);
+      }
+
+      const result = await window.CardedSync.syncMutation(table, operation, row);
+      state.online = window.CardedSync.isOnline();
+      return result;
     });
   }
 
-  async function getAll(storeName) {
-    const transaction = tx([storeName], "readonly");
-    const result = await requestToPromise(transaction.objectStore(storeName).getAll());
-    await transactionDone(transaction);
-    return result;
+  async function persistProgress(card) {
+    return persistEntity("cards", "update", cardToRow(card));
   }
 
-  async function loadAll() {
-    const [folders, sets, cards, statsRows] = await Promise.all([
-      getAll("folders"),
-      getAll("sets"),
-      getAll("cards"),
-      getAll("stats"),
-    ]);
+  async function persistStats() {
+    return persistEntity("user_stats", "upsert", statsToRow());
+  }
 
-    state.folders = folders;
-    state.sets = sets;
-    state.cards = cards;
-    state.stats = statsRows.find((row) => row.id === "global") || state.stats;
+  function idbRequest(request) {
+    return new Promise(function (resolve, reject) {
+      request.onsuccess = function () {
+        resolve(request.result);
+      };
+      request.onerror = function () {
+        reject(request.error);
+      };
+    });
+  }
+
+  async function readLegacyDatabase() {
+    return new Promise(function (resolve, reject) {
+      const request = indexedDB.open("FlashCardsDB");
+
+      request.onerror = function () {
+        reject(request.error);
+      };
+
+      request.onsuccess = async function () {
+        const legacyDb = request.result;
+        const storeNames = Array.from(legacyDb.objectStoreNames);
+
+        if (!storeNames.includes("folders") || !storeNames.includes("sets") || !storeNames.includes("cards")) {
+          legacyDb.close();
+          resolve({ folders: [], sets: [], cards: [] });
+          return;
+        }
+
+        try {
+          const tx = legacyDb.transaction(["folders", "sets", "cards"], "readonly");
+          const folders = await idbRequest(tx.objectStore("folders").getAll());
+          const sets = await idbRequest(tx.objectStore("sets").getAll());
+          const cards = await idbRequest(tx.objectStore("cards").getAll());
+          legacyDb.close();
+          resolve({ folders, sets, cards });
+        } catch (error) {
+          legacyDb.close();
+          reject(error);
+        }
+      };
+    });
+  }
+
+  async function clearLegacyDatabase() {
+    return new Promise(function (resolve, reject) {
+      const request = indexedDB.open("FlashCardsDB");
+
+      request.onerror = function () {
+        reject(request.error);
+      };
+
+      request.onsuccess = async function () {
+        const legacyDb = request.result;
+        const stores = ["folders", "sets", "cards", "stats"].filter(function (name) {
+          return legacyDb.objectStoreNames.contains(name);
+        });
+        const tx = legacyDb.transaction(stores, "readwrite");
+        const clearOps = stores
+          .map(function (name) {
+            return idbRequest(tx.objectStore(name).clear());
+          });
+
+        try {
+          await Promise.all(clearOps);
+          legacyDb.close();
+          resolve();
+        } catch (error) {
+          legacyDb.close();
+          reject(error);
+        }
+      };
+    });
+  }
+
+  async function maybePromptLegacyMigration() {
+    if (localStorage.getItem(getMigrationKey(MIGRATION_DONE_KEY)) || localStorage.getItem(getMigrationKey(MIGRATION_SKIPPED_KEY))) {
+      return;
+    }
+
+    const legacy = await readLegacyDatabase().catch(function () {
+      return null;
+    });
+
+    if (!legacy) return;
+
+    const totalItems = legacy.folders.length + legacy.sets.length + legacy.cards.length;
+    if (!totalItems) {
+      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), "empty");
+      return;
+    }
+
+    state.modal = {
+      title: "Import your local v1 library?",
+      copy: `We found ${legacy.folders.length} folders, ${legacy.sets.length} sets, and ${legacy.cards.length} cards saved locally. Upload them to your new account?`,
+      confirmLabel: "Upload data",
+      onCancel: function () {
+        localStorage.setItem(getMigrationKey(MIGRATION_SKIPPED_KEY), nowIso());
+      },
+      onConfirm: async function () {
+        state.modal = null;
+        renderModal();
+        await runLegacyMigration(legacy);
+      },
+    };
+    renderModal();
+  }
+
+  async function runLegacyMigration(legacy) {
+    const folderIdMap = new Map();
+    const setIdMap = new Map();
+
+    const folders = legacy.folders.map(function (folder, index) {
+      const id = crypto.randomUUID();
+      folderIdMap.set(folder.id, id);
+      return {
+        id,
+        user_id: state.userId,
+        name: folder.name,
+        order: folder.order ?? index,
+        created_at: toIso(folder.createdAt) || nowIso(),
+      };
+    });
+
+    const sets = legacy.sets.map(function (set, index) {
+      const id = crypto.randomUUID();
+      setIdMap.set(set.id, id);
+      return {
+        id,
+        user_id: state.userId,
+        folder_id: set.folderId ? (folderIdMap.get(set.folderId) || null) : null,
+        name: set.name,
+        order: set.order ?? index,
+        created_at: toIso(set.createdAt) || nowIso(),
+      };
+    });
+
+    const cards = legacy.cards.map(function (card, index) {
+      return {
+        id: crypto.randomUUID(),
+        user_id: state.userId,
+        set_id: setIdMap.get(card.setId),
+        term: card.term,
+        definition: card.definition,
+        order: card.order ?? index,
+        created_at: nowIso(),
+      };
+    }).filter(function (card) {
+      return Boolean(card.set_id);
+    });
+
+    try {
+      if (folders.length) {
+        const { error } = await window.supabaseClient.from("folders").insert(folders);
+        if (error) throw error;
+      }
+      if (sets.length) {
+        const { error } = await window.supabaseClient.from("sets").insert(sets);
+        if (error) throw error;
+      }
+      if (cards.length) {
+        const { error } = await window.supabaseClient.from("cards").insert(cards);
+        if (error) throw error;
+      }
+
+      await clearLegacyDatabase();
+      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), nowIso());
+      await window.CardedSync.refetchLatest();
+      await loadAll();
+      render();
+      showToast("Local v1 data uploaded.");
+    } catch (error) {
+      console.error(error);
+      showToast("Some data couldn't be uploaded. Your local data is still safe.");
+    }
   }
 
   function bindGlobalEvents() {
@@ -214,8 +547,21 @@
   }
 
   function render() {
+    if (state.isLoading) {
+      renderLoadingState();
+      return;
+    }
+
     renderHeaderActions();
     els.app.innerHTML = "";
+
+    if (!state.online) {
+      els.app.appendChild(createElement(`
+        <section class="banner offline-banner" aria-label="Offline status">
+          <p>Offline — changes will sync when you're back online</p>
+        </section>
+      `));
+    }
 
     switch (state.route.view) {
       case "folder":
@@ -241,6 +587,9 @@
     els.headerActions.innerHTML = `
       <button class="ghost-button" data-action="create-folder">New folder</button>
       <button class="button" data-action="create-set">New set</button>
+      <a class="account-link" href="./account.html" aria-label="Open account">
+        <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
+      </a>
     `;
   }
 
@@ -913,6 +1262,9 @@
         document.getElementById("bulk-import-input")?.focus();
         break;
       case "close-modal":
+        if (state.modal && typeof state.modal.onCancel === "function") {
+          state.modal.onCancel();
+        }
         state.modal = null;
         renderModal();
         break;
@@ -1295,7 +1647,7 @@
       createdAt: Date.now(),
       order: nextOrder(state.folders),
     };
-    await putRecord("folders", folder);
+    await persistEntity("folders", "insert", folderToRow(folder));
     state.folders.push(folder);
     return folder;
   }
@@ -1311,7 +1663,7 @@
       timesStudied: 0,
       order: nextOrder(state.sets.filter((item) => item.folderId === folderId)),
     };
-    await putRecord("sets", set);
+    await persistEntity("sets", "insert", setToRow(set));
     state.sets.push(set);
     return set;
   }
@@ -1328,7 +1680,7 @@
       lastSeen: null,
       order: nextOrder(getCardsForSet(setId)),
     };
-    await putRecord("cards", card);
+    await persistEntity("cards", "insert", cardToRow(card));
     state.cards.push(card);
     return card;
   }
@@ -1337,89 +1689,70 @@
     const folder = getFolder(id);
     if (!folder) return;
     folder.name = name;
-    await putRecord("folders", folder);
+    await persistEntity("folders", "update", folderToRow(folder));
   }
 
   async function updateSetName(id, name) {
     const set = getSet(id);
     if (!set) return;
     set.name = name;
-    await putRecord("sets", set);
+    await persistEntity("sets", "update", setToRow(set));
   }
 
   async function updateCardField(id, field, value) {
     const card = getCard(id);
     if (!card) return;
     card[field] = value;
-    await putRecord("cards", card);
+    await persistEntity("cards", "update", cardToRow(card));
   }
 
   async function deleteFolder(folderId) {
-    await enqueueWrite(async () => {
-      const affectedSets = state.sets.filter((item) => item.folderId === folderId);
-      const transaction = tx(["folders", "sets"], "readwrite");
-      const folderStore = transaction.objectStore("folders");
-      const setStore = transaction.objectStore("sets");
+    const affectedSets = state.sets.filter((item) => item.folderId === folderId);
+    for (const set of affectedSets) {
+      set.folderId = null;
+      set.order = nextOrder(state.sets.filter((item) => item.folderId === null && item.id !== set.id));
+      await persistEntity("sets", "update", setToRow(set));
+    }
 
-      for (const set of affectedSets) {
-        set.folderId = null;
-        set.order = nextOrder(state.sets.filter((item) => item.folderId === null && item.id !== set.id));
-        setStore.put(set);
-      }
-
-      folderStore.delete(folderId);
-      await transactionDone(transaction);
-      state.folders = state.folders.filter((item) => item.id !== folderId);
-    });
+    await persistEntity("folders", "delete", { id: folderId });
+    state.folders = state.folders.filter((item) => item.id !== folderId);
   }
 
   async function deleteSet(setId) {
-    await enqueueWrite(async () => {
-      const transaction = tx(["sets", "cards"], "readwrite");
-      transaction.objectStore("sets").delete(setId);
-      const cardStore = transaction.objectStore("cards");
-      for (const card of state.cards.filter((item) => item.setId === setId)) {
-        cardStore.delete(card.id);
+    const cardsToDelete = state.cards.filter((item) => item.setId === setId);
+    for (const card of cardsToDelete) {
+      if (card.progressId) {
+        await window.CardedDB.deleteWhere("user_card_progress", function (row) {
+          return row.card_id === card.id;
+        });
       }
-      await transactionDone(transaction);
-      state.sets = state.sets.filter((item) => item.id !== setId);
-      state.cards = state.cards.filter((item) => item.setId !== setId);
+    }
+    await window.CardedDB.deleteWhere("cards", function (row) {
+      return row.set_id === setId;
     });
+    await persistEntity("sets", "delete", { id: setId });
+    state.sets = state.sets.filter((item) => item.id !== setId);
+    state.cards = state.cards.filter((item) => item.setId !== setId);
   }
 
   async function deleteCard(cardId) {
-    await deleteRecord("cards", cardId);
+    const card = getCard(cardId);
+    if (card && card.progressId) {
+      await window.CardedDB.deleteWhere("user_card_progress", function (row) {
+        return row.card_id === cardId;
+      });
+    }
+    await persistEntity("cards", "delete", { id: cardId });
     state.cards = state.cards.filter((item) => item.id !== cardId);
   }
 
   async function resetSetBoxes(setId) {
-    await enqueueWrite(async () => {
-      const cards = getCardsForSet(setId);
-      const transaction = tx(["cards"], "readwrite");
-      const store = transaction.objectStore("cards");
-      cards.forEach((card) => {
-        card.box = 1;
-        card.lastSeen = null;
-        store.put(card);
-      });
-      await transactionDone(transaction);
-    });
-  }
-
-  async function putRecord(storeName, record) {
-    await enqueueWrite(async () => {
-      const transaction = tx([storeName], "readwrite");
-      transaction.objectStore(storeName).put(record);
-      await transactionDone(transaction);
-    });
-  }
-
-  async function deleteRecord(storeName, key) {
-    await enqueueWrite(async () => {
-      const transaction = tx([storeName], "readwrite");
-      transaction.objectStore(storeName).delete(key);
-      await transactionDone(transaction);
-    });
+    const cards = getCardsForSet(setId);
+    for (const card of cards) {
+      card.box = 1;
+      card.lastSeen = null;
+      await persistProgress(card);
+    }
   }
 
   async function importCardsIntoSet(setId, text) {
@@ -1458,14 +1791,9 @@
       return { imported: 0, skipped };
     }
 
-    await enqueueWrite(async () => {
-      const transaction = tx(["cards"], "readwrite");
-      const store = transaction.objectStore("cards");
-      for (const card of newCards) {
-        store.put(card);
-      }
-      await transactionDone(transaction);
-    });
+    for (const card of newCards) {
+      await persistEntity("cards", "insert", cardToRow(card));
+    }
     state.cards.push(...newCards);
     return { imported: newCards.length, skipped };
   }
@@ -1635,7 +1963,7 @@
     }
 
     card.lastSeen = Date.now();
-    await putRecord("cards", card);
+    await persistProgress(card);
     const poolCard = session.pool.find((item) => item.id === card.id);
     if (poolCard) {
       poolCard.correctCount = card.correctCount;
@@ -1688,13 +2016,11 @@
       state.stats.longestStreak = Math.max(state.stats.longestStreak, state.stats.currentStreak);
     }
     state.stats.lastStudiedDate = today;
+    state.stats.totalSessions = (state.stats.totalSessions || 0) + 1;
+    state.stats.totalCardsReviewed = (state.stats.totalCardsReviewed || 0) + getCardsForSet(setId).length;
 
-    await enqueueWrite(async () => {
-      const transaction = tx(["sets", "stats"], "readwrite");
-      transaction.objectStore("sets").put(set);
-      transaction.objectStore("stats").put(state.stats);
-      await transactionDone(transaction);
-    });
+    await persistEntity("sets", "update", setToRow(set));
+    await persistStats();
   }
 
   function getChoiceClass(session, choice) {
@@ -1748,7 +2074,7 @@
     if (!set) return;
     set.folderId = folderId;
     set.order = nextOrder(state.sets.filter((item) => item.folderId === folderId && item.id !== set.id));
-    await putRecord("sets", set);
+    await persistEntity("sets", "update", setToRow(set));
     render();
     showToast(folderId ? "Set moved into folder" : "Set moved to standalone");
   }
@@ -1788,15 +2114,10 @@
   }
 
   async function persistCardOrder(cards) {
-    await enqueueWrite(async () => {
-      const transaction = tx(["cards"], "readwrite");
-      const store = transaction.objectStore("cards");
-      cards.forEach((card, index) => {
-        card.order = index;
-        store.put(card);
-      });
-      await transactionDone(transaction);
-    });
+    for (const [index, card] of cards.entries()) {
+      card.order = index;
+      await persistEntity("cards", "update", cardToRow(card));
+    }
   }
 
   function getFolder(id) {
