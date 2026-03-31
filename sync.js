@@ -87,16 +87,13 @@
     if (table === "cards") {
       return {
         id: payload.id,
+        user_id: payload.user_id,
         set_id: payload.set_id,
         term: payload.term,
         definition: payload.definition,
         order: payload.order,
         created_at: payload.created_at,
         updated_at: payload.updated_at,
-        box: payload.box,
-        last_seen: payload.last_seen,
-        correct_count: payload.correct_count,
-        incorrect_count: payload.incorrect_count,
       };
     }
 
@@ -268,7 +265,7 @@
       await unsubscribeAllRealtime();
       subscribeTable("folders", `user_id=eq.${activeUserId}`);
       subscribeTable("sets", `user_id=eq.${activeUserId}`);
-      subscribeTable("cards");
+      subscribeTable("cards", `user_id=eq.${activeUserId}`);
     }
 
     return window.CardedDB.getAllUserData(userId);

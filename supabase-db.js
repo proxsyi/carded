@@ -183,10 +183,11 @@
     );
   }
 
-  async function getCards(setId) {
+  async function getCards(userId, setId) {
     return unwrap(
       () => cardsTable()
         .select("*")
+        .eq("user_id", userId)
         .eq("set_id", setId)
         .order("order", { ascending: true })
     );
@@ -197,16 +198,13 @@
       () => cardsTable()
         .insert({
           id: payload.id,
+          user_id: userId,
           set_id: payload.set_id,
           term: payload.term,
           definition: payload.definition,
           order: payload.order,
           created_at: payload.created_at,
           updated_at: payload.updated_at,
-          box: payload.box,
-          last_seen: payload.last_seen,
-          correct_count: payload.correct_count,
-          incorrect_count: payload.incorrect_count,
         })
         .select()
         .single()
@@ -285,7 +283,7 @@
     ]);
 
     const cardsBySet = await Promise.all(sets.map(function (set) {
-      return getCards(set.id);
+      return getCards(userId, set.id);
     }));
 
     return {

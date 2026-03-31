@@ -25,19 +25,12 @@
 
   async function replaceAllData(bundle) {
     const existingSets = await db.sets.toArray();
-    const existingCards = await db.cards.toArray();
 
     const setExtras = new Map(existingSets.map(function (row) {
       return [row.id, {
         best_score: row.best_score ?? null,
         times_studied: row.times_studied ?? 0,
         last_studied: row.last_studied ?? null,
-      }];
-    }));
-
-    const cardExtras = new Map(existingCards.map(function (row) {
-      return [row.id, {
-        box: row.box ?? 1,
       }];
     }));
 
@@ -53,12 +46,7 @@
           ...(setExtras.get(row.id) || {}),
         };
       }));
-      await db.cards.bulkPut((bundle.cards || []).map(function (row) {
-        return {
-          ...row,
-          ...(cardExtras.get(row.id) || {}),
-        };
-      }));
+      await db.cards.bulkPut(bundle.cards || []);
       await db.user_card_progress.bulkPut(bundle.progress || []);
       if (bundle.stats) {
         await db.user_stats.put(bundle.stats);

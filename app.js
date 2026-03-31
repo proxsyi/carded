@@ -190,10 +190,10 @@
       createdAt: toMillis(row.created_at) || Date.now(),
       updatedAt: row.updated_at || null,
       progressId: progress ? progress.id : null,
-      correctCount: row.correct_count ?? (progress ? (progress.correct_count || 0) : 0),
-      incorrectCount: row.incorrect_count ?? (progress ? (progress.incorrect_count || 0) : 0),
-      lastSeen: toMillis(row.last_seen) || (progress ? toMillis(progress.last_seen) : null),
-      box: row.box ?? Math.max(1, Math.min(3, (progress && progress.repetitions ? progress.repetitions : 0) + 1)),
+      correctCount: progress ? (progress.correct_count || 0) : 0,
+      incorrectCount: progress ? (progress.incorrect_count || 0) : 0,
+      lastSeen: progress ? toMillis(progress.last_seen) : null,
+      box: Math.max(1, Math.min(3, (progress && progress.repetitions ? progress.repetitions : 0) + 1)),
     };
   }
 
@@ -268,16 +268,13 @@
   function cardToRow(card) {
     return {
       id: card.id,
+      user_id: state.userId,
       set_id: card.setId,
       term: card.term,
       definition: card.definition,
       order: card.order,
       created_at: toIso(card.createdAt) || nowIso(),
       updated_at: nowIso(),
-      box: card.box || 1,
-      last_seen: toIso(card.lastSeen),
-      correct_count: card.correctCount || 0,
-      incorrect_count: card.incorrectCount || 0,
     };
   }
 
@@ -321,12 +318,15 @@
 
       const result = await window.CardedSync.syncMutation(table, operation, row);
       state.online = window.CardedSync.isOnline();
+      if (result && result.queued) {
+        showToast("Couldn't save — you're offline. Changes will sync when you're back online.");
+      }
       return result;
     });
   }
 
   async function persistProgress(card) {
-    return persistEntity("cards", "update", cardToRow(card));
+    return persistEntity("user_card_progress", "upsert", progressToRow(card));
   }
 
   async function persistStats() {
@@ -2231,7 +2231,7 @@
     `;
     const dismissButton = els.toastRoot.querySelector("[data-action='dismiss-toast']");
     dismissButton?.addEventListener("click", hideToast, { once: true });
-    state.toastTimer = setTimeout(hideToast, 3000);
+    state.toastTimer = setTimeout(hideToast, 4000);
   }
 
   function hideToast() {
