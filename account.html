@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#141417">
+    <title>Account · Carded</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon.png">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./config.js"></script>
+    <script src="./auth.js"></script>
+  </head>
+  <body>
+    <main class="auth-shell">
+      <section class="auth-card account-card">
+        <div class="auth-header-row">
+          <div>
+            <p class="eyebrow">Carded</p>
+            <h1>Account</h1>
+          </div>
+          <a class="ghost-button" href="./index.html">Back to library</a>
+        </div>
+
+        <section id="account-view" class="stack hidden">
+          <div class="panel account-summary">
+            <div class="field">
+              <span class="meta-label">Email</span>
+              <strong id="account-email">-</strong>
+            </div>
+            <div class="field">
+              <span class="meta-label">Account created</span>
+              <strong id="account-created">-</strong>
+            </div>
+          </div>
+
+          <section class="stack">
+            <div class="section-header">
+              <div class="stack">
+                <h2 class="section-title">Usage stats</h2>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div class="stat-card"><div class="meta-label">Study time</div><div id="stats-time" class="stat-value">0m</div></div>
+              <div class="stat-card"><div class="meta-label">Cards reviewed</div><div id="stats-reviewed" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Sessions</div><div id="stats-sessions" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Current streak</div><div id="stats-current-streak" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Longest streak</div><div id="stats-longest-streak" class="stat-value">0</div></div>
+            </div>
+          </section>
+
+          <form id="password-form" class="stack panel">
+            <h2>Change password</h2>
+            <div class="field">
+              <label for="new-password">New password</label>
+              <input id="new-password" name="newPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="confirm-password">Confirm password</label>
+              <input id="confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <button class="button" type="submit">Update password</button>
+          </form>
+
+          <div class="account-actions">
+            <button id="signout-button" class="ghost-button" type="button">Sign out</button>
+            <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
+          </div>
+        </section>
+
+        <section id="recovery-view" class="stack hidden">
+          <p class="eyebrow">Password recovery</p>
+          <h1>Set a new password</h1>
+          <form id="recovery-form" class="stack panel">
+            <div class="field">
+              <label for="recovery-password">New password</label>
+              <input id="recovery-password" name="newPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="recovery-confirm-password">Confirm password</label>
+              <input id="recovery-confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <button class="button" type="submit">Set new password</button>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <div id="delete-modal" class="modal-backdrop hidden">
+      <div class="modal">
+        <h2>Delete account?</h2>
+        <p>This removes your Carded data from the cloud. This action cannot be undone.</p>
+        <div class="modal__actions">
+          <button id="cancel-delete-button" class="ghost-button" type="button">Cancel</button>
+          <button id="confirm-delete-button" class="danger-button" type="button">Delete account</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const auth = window.CardedAuth;
+        const supabase = window.supabaseClient;
+        const accountView = document.getElementById("account-view");
+        const recoveryView = document.getElementById("recovery-view");
+        const deleteModal = document.getElementById("delete-modal");
+
+        function formatDate(value) {
+          return value ? new Date(value).toLocaleDateString() : "-";
+        }
+
+        function formatStudyTime(totalSeconds) {
+          const minutes = Math.floor((Number(totalSeconds) || 0) / 60);
+          return `${minutes}m`;
+        }
+
+        function toggleRecoveryMode(enabled) {
+          accountView.classList.toggle("hidden", enabled);
+          recoveryView.classList.toggle("hidden", !enabled);
+        }
+
+        async function loadStats(userId) {
+          const { data, error } = await supabase
+            .from("user_stats")
+            .upsert({ user_id: userId }, { onConflict: "user_id" })
+            .select()
+            .single();
+
+          if (error) throw error;
+          return data;
+        }
+
+        async function renderAccount() {
+          const session = await auth.authGuard();
+          if (!session) return;
+
+          toggleRecoveryMode(auth.isPasswordRecoveryMode());
+          document.getElementById("account-email").textContent = session.user.email || "-";
+          document.getElementById("account-created").textContent = formatDate(session.user.created_at);
+
+          try {
+            const stats = await loadStats(session.user.id);
+            document.getElementById("stats-time").textContent = formatStudyTime(stats.total_study_time);
+            document.getElementById("stats-reviewed").textContent = String(stats.total_cards_reviewed || 0);
+            document.getElementById("stats-sessions").textContent = String(stats.total_sessions || 0);
+            document.getElementById("stats-current-streak").textContent = String(stats.current_streak || 0);
+            document.getElementById("stats-longest-streak").textContent = String(stats.longest_streak || 0);
+          } catch (error) {
+            auth.showToast("Something went wrong. Please try again.");
+          }
+        }
+
+        async function handlePasswordUpdate(form) {
+          const formData = new FormData(form);
+          const newPassword = String(formData.get("newPassword") || "");
+          const confirmPassword = String(formData.get("confirmPassword") || "");
+
+          if (newPassword.length < 6) {
+            auth.showToast("Password must be at least 6 characters.");
+            return;
+          }
+
+          if (newPassword !== confirmPassword) {
+            auth.showToast("Passwords do not match.");
+            return;
+          }
+
+          try {
+            await auth.updatePassword(newPassword);
+            form.reset();
+            toggleRecoveryMode(false);
+            auth.showToast("Password updated.");
+          } catch (error) {
+            auth.showToast(error.message || "Something went wrong. Please try again.");
+          }
+        }
+
+        window.addEventListener("DOMContentLoaded", renderAccount);
+        window.addEventListener("carded:auth-state", function (event) {
+          if (event.detail.event === "PASSWORD_RECOVERY") {
+            toggleRecoveryMode(true);
+          }
+          if (event.detail.event === "USER_UPDATED") {
+            renderAccount();
+          }
+        });
+
+        document.getElementById("password-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          handlePasswordUpdate(event.currentTarget);
+        });
+
+        document.getElementById("recovery-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          handlePasswordUpdate(event.currentTarget);
+        });
+
+        document.getElementById("signout-button").addEventListener("click", async function () {
+          try {
+            await auth.signOut();
+          } catch (error) {
+            auth.showToast(error.message || "Something went wrong. Please try again.");
+          }
+        });
+
+        document.getElementById("delete-account-button").addEventListener("click", function () {
+          deleteModal.classList.remove("hidden");
+        });
+
+        document.getElementById("cancel-delete-button").addEventListener("click", function () {
+          deleteModal.classList.add("hidden");
+        });
+
+        document.getElementById("confirm-delete-button").addEventListener("click", async function () {
+          try {
+            const { error } = await supabase.rpc("delete_user");
+            if (error) throw error;
+            await auth.signOut();
+          } catch (error) {
+            auth.showToast(error.message || "Something went wrong. Please try again.");
+          } finally {
+            deleteModal.classList.add("hidden");
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

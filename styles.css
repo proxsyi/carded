@@ -781,6 +781,94 @@ select:focus-visible,
   font-weight: 700;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(480px, 100%);
+  padding: 32px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(28, 28, 33, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.account-card {
+  width: min(820px, 100%);
+}
+
+.auth-card h1 {
+  margin: 0 0 8px;
+}
+
+.auth-copy {
+  margin: 0 0 24px;
+  color: var(--text-secondary);
+}
+
+.auth-divider {
+  position: relative;
+  margin: 24px 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.auth-divider::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px solid var(--border);
+}
+
+.auth-divider span {
+  position: relative;
+  padding: 0 12px;
+  background: rgba(28, 28, 33, 0.94);
+}
+
+.auth-button {
+  width: 100%;
+}
+
+.auth-footer {
+  margin-top: 24px;
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.auth-footer p {
+  margin: 0;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-hover);
+  text-align: left;
+}
+
+.inline-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: 0.88rem;
+}
+
+.auth-header-row,
+.account-actions,
+.account-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .meta-inline {
   display: flex;
   flex-wrap: wrap;

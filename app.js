@@ -43,6 +43,22 @@
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
+    if (window.CardedAuth && typeof window.CardedAuth.authGuard === "function") {
+      const session = await window.CardedAuth.authGuard().catch((error) => {
+        console.error(error);
+        return null;
+      });
+      if (!session) return;
+
+      if (typeof window.CardedAuth.onAuthStateChange === "function") {
+        window.CardedAuth.onAuthStateChange((event) => {
+          if (event === "USER_UPDATED") {
+            render();
+          }
+        });
+      }
+    }
+
     if (!("indexedDB" in window)) {
       showStorageError();
       return;
