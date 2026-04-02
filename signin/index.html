@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> auth -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Sign In</title>
+    <meta name="description" content="Sign in to your Carded account with email and password.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
+    <script src="/carded/config.js?v=3.0.0" defer></script>
+    <script src="/carded/utils.js?v=3.0.0" defer></script>
+    <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
+    <script src="/carded/auth.js?v=3.0.0" defer></script>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <main class="auth-shell" id="main">
+      <section class="auth-card">
+        <p class="eyebrow">Carded</p>
+        <h1>Sign in</h1>
+        <p class="auth-copy">Pick up your flashcards on any device.</p>
+
+        <form id="signin-form" class="stack">
+          <div class="field">
+            <label for="signin-email">Email</label>
+            <input id="signin-email" name="email" class="input" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="signin-password">Password</label>
+            <div class="password-field">
+              <input id="signin-password" name="password" class="input" type="password" autocomplete="current-password" required>
+              <button class="ghost-button password-toggle" data-toggle-password="signin-password" type="button">Show</button>
+            </div>
+          </div>
+          <button class="button" type="submit">Sign in</button>
+        </form>
+
+        <div class="auth-footer">
+          <button id="forgot-password-toggle" class="link-button" type="button">Forgot password?</button>
+          <p>Need an account? <a href="/carded/signup">Sign up</a></p>
+          <p><a href="/carded/login">Back to all login options</a></p>
+        </div>
+
+        <form id="reset-form" class="stack hidden">
+          <div class="field">
+            <label for="reset-email">Reset email</label>
+            <input id="reset-email" name="resetEmail" class="input" type="email" autocomplete="email">
+          </div>
+          <button class="ghost-button" type="submit">Send reset link</button>
+        </form>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", async function () {
+        await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+
+        const signInForm = document.getElementById("signin-form");
+        const resetForm = document.getElementById("reset-form");
+        const toggle = document.getElementById("forgot-password-toggle");
+        document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            const input = document.getElementById(button.dataset.togglePassword);
+            if (!input) return;
+            input.type = input.type === "password" ? "text" : "password";
+            button.textContent = input.type === "password" ? "Show" : "Hide";
+          });
+        });
+
+        signInForm.addEventListener("submit", async function (event) {
+          event.preventDefault();
+          const submitBtn = signInForm.querySelector("[type='submit']");
+          const data = new FormData(signInForm);
+          window.CardedUtils.withLoading(submitBtn, async function () {
+            try {
+              await window.CardedAuth.signInWithEmail(String(data.get("email") || "").trim(), String(data.get("password") || ""));
+              window.CardedAuthGuard.redirectAuthedHome();
+            } catch (error) {
+              window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+            }
+          });
+        });
+
+        var resetSubmitBtn = resetForm.querySelector("[type='submit']");
+        var resetCooldownInterval = null;
+
+        function updateResetButtonState() {
+          var secs = window.CardedAuth.resetCooldownRemaining();
+          if (secs > 0) {
+            resetSubmitBtn.disabled = true;
+            resetSubmitBtn.textContent = "Check your email (" + secs + "s)";
+            clearInterval(resetCooldownInterval);
+            resetCooldownInterval = setInterval(function () {
+              var remaining = window.CardedAuth.resetCooldownRemaining();
+              if (remaining <= 0) {
+                clearInterval(resetCooldownInterval);
+                resetSubmitBtn.disabled = false;
+                resetSubmitBtn.textContent = "Send reset link";
+              } else {
+                resetSubmitBtn.textContent = "Check your email (" + remaining + "s)";
+              }
+            }, 1000);
+          }
+        }
+
+        resetForm.addEventListener("submit", async function (event) {
+          event.preventDefault();
+          const data = new FormData(resetForm);
+          window.CardedUtils.withLoading(resetSubmitBtn, async function () {
+            try {
+              await window.CardedAuth.resetPassword(String(data.get("resetEmail") || "").trim());
+              window.CardedAuth.showToast("If an account exists, we've sent a reset link.");
+              updateResetButtonState();
+            } catch (error) {
+              window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+              updateResetButtonState();
+            }
+          });
+        });
+
+        updateResetButtonState();
+
+        toggle.addEventListener("click", function () {
+          resetForm.classList.toggle("hidden");
+        });
+      });
+    </script>
+  </body>
+</html>

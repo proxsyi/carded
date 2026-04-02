@@ -6,6 +6,7 @@
   const LAST_EXPORT_KEY = "carded.lastExportAt";
   const MIGRATION_DONE_KEY = "carded_v1_migration_done";
   const MIGRATION_SKIPPED_KEY = "carded_v1_migration_skipped";
+  const STUDY_SESSION_KEY = "carded_study_session";
   const MAX_NAME_LENGTH = 40;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -16,7 +17,7 @@
     stats: { id: "stats", currentStreak: 0, lastStudiedDate: "", longestStreak: 0 },
     route: { view: "home" },
     search: "",
-    sort: localStorage.getItem(SORT_KEY) || "alphabetical",
+    sort: window.CardedUtils.safeGet(SORT_KEY) || "alphabetical",
     userId: null,
     userEmail: "",
     online: true,
@@ -34,22 +35,31 @@
   };
 
   const els = {
-    app: document.getElementById("app"),
-    appShell: document.getElementById("app-shell"),
-    storageError: document.getElementById("storage-error"),
-    toastRoot: document.getElementById("toast-root"),
-    modalRoot: document.getElementById("modal-root"),
-    headerActions: document.getElementById("header-actions"),
+    app: null,
+    appShell: null,
+    storageError: null,
+    toastRoot: null,
+    modalRoot: null,
+    headerActions: null,
   };
   let writeQueue = Promise.resolve();
+  let modalTriggerEl = null;
+  let dirtyEditor = false;
 
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
+    els.app = document.getElementById("app");
+    els.appShell = document.getElementById("app-shell");
+    els.storageError = document.getElementById("storage-error");
+    els.toastRoot = document.getElementById("toast-root");
+    els.modalRoot = document.getElementById("modal-root");
+    els.headerActions = document.getElementById("header-actions");
+
     let session = null;
 
-    if (window.CardedAuth && typeof window.CardedAuth.authGuard === "function") {
-      session = await window.CardedAuth.authGuard().catch((error) => {
+    if (window.CardedAuthGuard && typeof window.CardedAuthGuard.guardPage === "function") {
+      session = await window.CardedAuthGuard.guardPage({ requiresAuth: true }).catch((error) => {
         console.error(error);
         return null;
       });
@@ -63,6 +73,13 @@
 
     state.userId = session.user.id;
     state.userEmail = session.user.email || "";
+    if (
+      window.location.pathname === window.BASE_PATH + "/library" &&
+      (window.location.search.includes("code=") || window.location.hash.includes("access_token="))
+    ) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    document.getElementById("auth-loading")?.classList.add("hidden");
     els.appShell.classList.remove("hidden");
     renderLoadingState();
 
@@ -71,11 +88,24 @@
       renderLoadingState();
     }, 5000);
 
+    // Safari private browsing detection — Dexie fails to write
     try {
-      const bundle = await window.CardedSync.initSync(state.userId);
+      await window.CardedDB.put("_healthcheck", { id: "__health__" }).catch(() => {});
+    } catch (_) {
+      showStorageError();
+      return;
+    }
+
+    try {
+      const bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
       state.online = window.CardedSync.isOnline();
       await loadAll(bundle);
+      await cleanOrphanedLocalData();
     } catch (error) {
+      if (error && error.name === "OpenFailedError") {
+        showStorageError();
+        return;
+      }
       console.error(error);
       showStorageError();
       return;
@@ -87,10 +117,30 @@
 
     bindGlobalEvents();
     registerServiceWorker();
-    window.addEventListener("hashchange", handleRouteChange);
     window.addEventListener("carded:data-changed", reloadFromCacheAndRender);
     window.addEventListener("carded:connectivity", handleConnectivityChange);
     window.addEventListener("carded:auth-state", handleAuthEvent);
+
+    // Multi-tab consistency: broadcast local changes to other tabs
+    if (typeof BroadcastChannel !== "undefined") {
+      const bc = new BroadcastChannel("carded-data");
+      bc.onmessage = function () { reloadFromCacheAndRender(); };
+      window.addEventListener("carded:data-changed", function () {
+        bc.postMessage("changed");
+      });
+    } else {
+      // Fallback: re-fetch when tab regains focus
+      window.addEventListener("focus", reloadFromCacheAndRender);
+    }
+    window.addEventListener("carded:sync-paused", function () {
+      showToast("Sync paused — will retry automatically.");
+    });
+    window.addEventListener("carded:sync-overflow", function () {
+      showToast("Too many offline changes. Please connect to sync before making more edits.");
+    });
+    window.addEventListener("carded:session-expired", function () {
+      window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
+    });
     handleRouteChange();
     maybePromptLegacyMigration();
     document.body.classList.add("ready");
@@ -119,6 +169,37 @@
       return mapCardRowToState(row, progressByCardId.get(row.id));
     });
     state.stats = mapStatsRowToState(cached.stats);
+  }
+
+  async function cleanOrphanedLocalData() {
+    const folderIds = new Set(state.folders.map((f) => f.id));
+    const setIds = new Set(state.sets.map((s) => s.id));
+    const cardIds = new Set(state.cards.map((c) => c.id));
+
+    // Sets whose folder no longer exists
+    const orphanedSets = state.sets.filter((s) => s.folderId && !folderIds.has(s.folderId));
+    for (const set of orphanedSets) {
+      await window.CardedDB.deleteById("sets", set.id);
+    }
+
+    // Cards whose set no longer exists
+    const orphanedCards = state.cards.filter((c) => !setIds.has(c.setId));
+    for (const card of orphanedCards) {
+      await window.CardedDB.deleteById("cards", card.id);
+    }
+
+    // Progress entries whose card no longer exists
+    const allProgress = await window.CardedDB.getAll("user_card_progress").catch(() => []);
+    for (const row of allProgress) {
+      if (!cardIds.has(row.card_id)) {
+        await window.CardedDB.deleteById("user_card_progress", row.id);
+      }
+    }
+
+    const cleaned = orphanedSets.length + orphanedCards.length;
+    if (cleaned > 0) {
+      window.CardedUtils.debugLog(`Cleaned ${cleaned} orphaned local records`);
+    }
   }
 
   async function reloadFromCacheAndRender() {
@@ -409,7 +490,7 @@
   }
 
   async function maybePromptLegacyMigration() {
-    if (localStorage.getItem(getMigrationKey(MIGRATION_DONE_KEY)) || localStorage.getItem(getMigrationKey(MIGRATION_SKIPPED_KEY))) {
+    if (window.CardedUtils.safeGet(getMigrationKey(MIGRATION_DONE_KEY)) || window.CardedUtils.safeGet(getMigrationKey(MIGRATION_SKIPPED_KEY))) {
       return;
     }
 
@@ -421,7 +502,7 @@
 
     const totalItems = legacy.folders.length + legacy.sets.length + legacy.cards.length;
     if (!totalItems) {
-      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), "empty");
+      window.CardedUtils.safeSet(getMigrationKey(MIGRATION_DONE_KEY), "empty");
       return;
     }
 
@@ -430,7 +511,7 @@
       copy: `We found ${legacy.folders.length} folders, ${legacy.sets.length} sets, and ${legacy.cards.length} cards saved locally. Upload them to your new account?`,
       confirmLabel: "Upload data",
       onCancel: function () {
-        localStorage.setItem(getMigrationKey(MIGRATION_SKIPPED_KEY), nowIso());
+        window.CardedUtils.safeSet(getMigrationKey(MIGRATION_SKIPPED_KEY), nowIso());
       },
       onConfirm: async function () {
         state.modal = null;
@@ -499,7 +580,7 @@
       }
 
       await clearLegacyDatabase();
-      localStorage.setItem(getMigrationKey(MIGRATION_DONE_KEY), nowIso());
+      window.CardedUtils.safeSet(getMigrationKey(MIGRATION_DONE_KEY), nowIso());
       await window.CardedSync.refetchLatest();
       await loadAll();
       render();
@@ -508,6 +589,19 @@
       console.error(error);
       showToast("Some data couldn't be uploaded. Your local data is still safe.");
     }
+  }
+
+  function setDirty(isDirty) {
+    dirtyEditor = isDirty;
+    if (isDirty) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    } else {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    }
+  }
+
+  function handleBeforeUnload(event) {
+    event.preventDefault();
   }
 
   function bindGlobalEvents() {
@@ -522,28 +616,64 @@
   }
 
   function handleRouteChange() {
-    const hash = location.hash.replace(/^#/, "") || "/";
-    const parts = hash.split("/").filter(Boolean);
+    const path = window.CardedUtils.currentPath();
+    const params = new URLSearchParams(window.location.search);
+    const folderId = params.get("folder");
+    const setId = params.get("set");
+    const mode = params.get("mode");
 
-    if (parts.length === 0) {
-      state.route = { view: "home" };
-    } else if (parts[0] === "folder" && parts[1]) {
-      state.route = { view: "folder", folderId: parts[1] };
-    } else if (parts[0] === "set" && parts[1]) {
-      state.route = { view: "set", setId: parts[1] };
-    } else if (parts[0] === "study" && parts[1]) {
-      state.route = { view: "study", setId: parts[1] };
-      initStudySession(parts[1]);
-    } else if (parts[0] === "learn" && parts[1]) {
-      state.route = { view: "learn", setId: parts[1] };
-      initLearnSession(parts[1]);
+    if (path === window.BASE_PATH + "/study" && setId) {
+      if (mode === "learn") {
+        state.route = { view: "learn", setId: setId };
+        initLearnSession(setId);
+      } else {
+        state.route = { view: "study", setId: setId };
+        const savedSession = loadSavedStudySession(setId);
+        if (savedSession && savedSession.currentIndex > 0) {
+          // Auto-resume — initStudySession handles it
+          initStudySession(setId, savedSession.shuffle, savedSession);
+          state.studySession.resumed = true;
+        } else {
+          initStudySession(setId);
+        }
+      }
+    } else if (path === window.BASE_PATH + "/library" && setId) {
+      state.route = { view: "set", setId: setId };
+    } else if (path === window.BASE_PATH + "/library" && folderId) {
+      state.route = { view: "folder", folderId: folderId };
     } else {
       state.route = { view: "home" };
-      location.hash = "#/";
-      return;
     }
 
     render();
+  }
+
+  function buildLibraryHref(options) {
+    const params = {};
+    if (options && options.folderId) params.folder = options.folderId;
+    if (options && options.setId) params.set = options.setId;
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", params);
+  }
+
+  function buildStudyHref(setId, mode) {
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", {
+      set: setId,
+      mode: mode === "learn" ? "learn" : "study",
+    });
+  }
+
+  function navigateToLibrary(options, replace) {
+    setDirty(false);
+    const href = buildLibraryHref(options);
+    if (replace) {
+      window.location.replace(href);
+      return;
+    }
+    window.location.assign(href);
+  }
+
+  function navigateToStudy(setId, mode) {
+    window.location.assign(buildStudyHref(setId, mode));
   }
 
   function render() {
@@ -555,12 +685,19 @@
     renderHeaderActions();
     els.app.innerHTML = "";
 
+    // Offline indicator — top banner outside main content
+    const existingOfflineBanner = document.getElementById("offline-status-banner");
     if (!state.online) {
-      els.app.appendChild(createElement(`
-        <section class="banner offline-banner" aria-label="Offline status">
-          <p>Offline — changes will sync when you're back online</p>
-        </section>
-      `));
+      if (!existingOfflineBanner) {
+        const banner = document.createElement("div");
+        banner.id = "offline-status-banner";
+        banner.className = "offline-status-banner";
+        banner.setAttribute("role", "status");
+        banner.textContent = "You're offline — changes will sync when you reconnect";
+        els.appShell.insertBefore(banner, els.appShell.querySelector("main"));
+      }
+    } else if (existingOfflineBanner) {
+      existingOfflineBanner.remove();
     }
 
     switch (state.route.view) {
@@ -587,7 +724,7 @@
     els.headerActions.innerHTML = `
       <button class="ghost-button" data-action="create-folder">New folder</button>
       <button class="button" data-action="create-set">New set</button>
-      <a class="account-link" href="./account.html" aria-label="Open account">
+      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
         <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
       </a>
     `;
@@ -642,7 +779,7 @@
   function renderFolderView(folderId) {
     const folder = getFolder(folderId);
     if (!folder) {
-      location.hash = "#/";
+      navigateToLibrary(null, true);
       return;
     }
 
@@ -650,7 +787,7 @@
     els.app.appendChild(createElement(`
       <section class="stack">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
+          { href: buildLibraryHref(), label: "Home" },
           { label: escapeHtml(folder.name) }
         ])}
         <div class="view-header">
@@ -687,7 +824,7 @@
   function renderSetView(setId) {
     const set = getSet(setId);
     if (!set) {
-      location.hash = "#/";
+      navigateToLibrary(null, true);
       return;
     }
 
@@ -699,8 +836,8 @@
     els.app.appendChild(createElement(`
       <section class="set-layout">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          ...(folder ? [{ href: `#/folder/${folder.id}`, label: escapeHtml(folder.name) }] : []),
+          { href: buildLibraryHref(), label: "Home" },
+          ...(folder ? [{ href: buildLibraryHref({ folderId: folder.id }), label: escapeHtml(folder.name) }] : []),
           { label: escapeHtml(set.name) }
         ])}
         <div class="view-header">
@@ -808,14 +945,35 @@
   function renderStudyView(setId) {
     const set = getSet(setId);
     if (!set) {
-      location.hash = "#/";
+      // Set not found — show a message instead of silently redirecting
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>Set not found.</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.BASE_PATH}/library">Back to library</a>
+          </div>
+        </section>
+      `));
       return;
     }
 
     const session = state.studySession;
     if (!session) {
-      location.hash = `#/set/${setId}`;
+      // No cards in set
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>No cards to study yet!</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>
+          </div>
+        </section>
+      `));
       return;
+    }
+
+    if (session.resumed) {
+      // Show a brief "resumed" indicator (clear after one render)
+      delete session.resumed;
     }
 
     if (session.complete) {
@@ -831,8 +989,8 @@
     els.app.appendChild(createElement(`
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Study" }
         ])}
         <div class="session-toolbar">
@@ -874,7 +1032,7 @@
     const set = getSet(setId);
     const session = state.learnSession;
     if (!set || !session) {
-      location.hash = `#/set/${setId}`;
+      navigateToLibrary({ setId: setId }, true);
       return;
     }
 
@@ -887,8 +1045,8 @@
     els.app.appendChild(createElement(`
       <section class="learn-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Learn" }
         ])}
         <div class="session-toolbar">
@@ -927,8 +1085,8 @@
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Study complete" }
         ])}
         <div class="summary-card">
@@ -949,8 +1107,8 @@
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
-          { href: "#/", label: "Home" },
-          { href: `#/set/${set.id}`, label: escapeHtml(set.name) },
+          { href: buildLibraryHref(), label: "Home" },
+          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
           { label: "Round summary" }
         ])}
         <div class="summary-card" style="width:min(760px,100%)">
@@ -1040,7 +1198,7 @@
           <div class="meta-item"><span class="meta-label">Cards</span><span>${totalCards}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="#/folder/${folder.id}">Open folder</a>
+          <a class="tile__open" href="${buildLibraryHref({ folderId: folder.id })}">Open folder</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
@@ -1071,7 +1229,7 @@
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(set.createdAt)}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="#/set/${set.id}">Open set</a>
+          <a class="tile__open" href="${buildLibraryHref({ setId: set.id })}">Open set</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
@@ -1160,12 +1318,12 @@
     }
 
     if (target.dataset.openFolder) {
-      location.hash = `#/folder/${target.dataset.openFolder}`;
+      navigateToLibrary({ folderId: target.dataset.openFolder });
       return;
     }
 
     if (target.dataset.openSet) {
-      location.hash = `#/set/${target.dataset.openSet}`;
+      navigateToLibrary({ setId: target.dataset.openSet });
       return;
     }
 
@@ -1196,13 +1354,13 @@
         }
         break;
       case "start-study":
-        location.hash = `#/study/${target.dataset.setId}`;
+        navigateToStudy(target.dataset.setId, "study");
         break;
       case "start-learn":
-        location.hash = `#/learn/${target.dataset.setId}`;
+        navigateToStudy(target.dataset.setId, "learn");
         break;
       case "back-to-set":
-        location.hash = `#/set/${target.dataset.setId}`;
+        navigateToLibrary({ setId: target.dataset.setId });
         break;
       case "flip-study-card":
         if (state.studySession) {
@@ -1249,7 +1407,7 @@
         exportAllSets();
         break;
       case "dismiss-backup-banner":
-        localStorage.setItem(BACKUP_DISMISS_KEY, String(Date.now()));
+        window.CardedUtils.safeSet(BACKUP_DISMISS_KEY, String(Date.now()));
         render();
         break;
       case "dismiss-toast":
@@ -1266,13 +1424,18 @@
           state.modal.onCancel();
         }
         state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
         renderModal();
         break;
-      case "confirm-modal":
+      case "confirm-modal": {
         if (state.modal && typeof state.modal.onConfirm === "function") {
-          state.modal.onConfirm();
+          const inputEl = els.modalRoot.querySelector("#modal-input");
+          const inputValue = inputEl ? inputEl.value : undefined;
+          const confirmBtn = target;
+          window.CardedUtils.withLoading(confirmBtn, () => state.modal.onConfirm(inputValue));
         }
         break;
+      }
     }
   }
 
@@ -1291,8 +1454,12 @@
         const term = String(formData.get("term") || "").trim();
         const definition = String(formData.get("definition") || "").trim();
         if (!term || !definition) return;
+        if (term.length > 5000 || definition.length > 5000) {
+          showToast("Content is very long — consider shortening it for best results.");
+        }
         await addCard(setId, term, definition);
         form.reset();
+        setDirty(false);
         render();
         showToast("Card added");
       }
@@ -1318,7 +1485,7 @@
 
     if (target.matches("[data-action='sort-library']")) {
       state.sort = target.value;
-      localStorage.setItem(SORT_KEY, state.sort);
+      window.CardedUtils.safeSet(SORT_KEY, state.sort);
       render();
       return;
     }
@@ -1344,6 +1511,16 @@
     if (target.matches("[data-action='search-library']")) {
       state.search = target.value;
       render();
+      return;
+    }
+
+    // Track dirty state for the add-card form
+    const cardForm = target.closest("[data-form='add-card']");
+    if (cardForm) {
+      const term = cardForm.querySelector("[name='term']");
+      const def = cardForm.querySelector("[name='definition']");
+      const hasContent = (term && term.value.trim()) || (def && def.value.trim());
+      setDirty(Boolean(hasContent));
     }
   }
 
@@ -1351,10 +1528,22 @@
     const target = event.target;
     const typingContext = isTypingContext(target);
 
+    if (event.key === "Enter" && state.modal) {
+      const inputEl = els.modalRoot && els.modalRoot.querySelector("#modal-input");
+      if (inputEl && document.activeElement === inputEl) {
+        event.preventDefault();
+        const confirmBtn = els.modalRoot.querySelector("[data-action='confirm-modal']");
+        confirmBtn && confirmBtn.click();
+        return;
+      }
+    }
+
     if (event.key === "Escape") {
       event.preventDefault();
       if (state.modal) {
+        if (typeof state.modal.onCancel === "function") state.modal.onCancel();
         state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
         renderModal();
         return;
       }
@@ -1460,16 +1649,16 @@
 
   function handleEscapeNavigation() {
     if (state.route.view === "study" || state.route.view === "learn") {
-      location.hash = `#/set/${state.route.setId}`;
+      navigateToLibrary({ setId: state.route.setId });
       return;
     }
     if (state.route.view === "set") {
       const set = getSet(state.route.setId);
-      location.hash = set?.folderId ? `#/folder/${set.folderId}` : "#/";
+      navigateToLibrary(set?.folderId ? { folderId: set.folderId } : null);
       return;
     }
     if (state.route.view === "folder") {
-      location.hash = "#/";
+      navigateToLibrary();
     }
   }
 
@@ -1520,24 +1709,57 @@
     state.drag.cardId = null;
   }
 
-  async function promptCreateFolder() {
-    const name = window.prompt("Folder name");
-    if (!name || !name.trim()) return;
-    await createFolder(name.trim());
-    render();
+  function promptCreateFolder() {
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      title: "New folder",
+      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "" },
+      confirmLabel: "Create",
+      danger: false,
+      onConfirm: async function (inputValue) {
+        const name = (inputValue || "").trim();
+        if (!name) { showToast("Name can't be empty."); return; }
+        const dupe = state.folders.find((f) => f.name.trim().toLowerCase() === name.toLowerCase());
+        if (dupe) { showToast("A folder with this name already exists."); return; }
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        await createFolder(name);
+        render();
+      },
+    };
+    renderModal();
   }
 
-  async function promptCreateSet(folderId = null) {
-    const name = window.prompt("Set name");
-    if (!name || !name.trim()) return;
-    const set = await createSet(name.trim(), folderId || null);
-    render();
-    location.hash = `#/set/${set.id}`;
+  function promptCreateSet(folderId) {
+    folderId = folderId || null;
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      title: "New set",
+      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "" },
+      confirmLabel: "Create",
+      danger: false,
+      onConfirm: async function (inputValue) {
+        const name = (inputValue || "").trim();
+        if (!name) { showToast("Name can't be empty."); return; }
+        const siblingSets = state.sets.filter((s) => s.folderId === folderId);
+        const dupe = siblingSets.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+        if (dupe) { showToast("A set with this name already exists."); return; }
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        const set = await createSet(name, folderId);
+        render();
+        navigateToLibrary({ setId: set.id });
+      },
+    };
+    renderModal();
   }
 
   function confirmDeleteFolder(folderId) {
     const folder = getFolder(folderId);
     if (!folder) return;
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete folder?",
       copy: "Sets inside this folder will become standalone. The folder itself will be removed.",
@@ -1554,6 +1776,7 @@
   function confirmDeleteSet(setId) {
     const set = getSet(setId);
     if (!set) return;
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete set?",
       copy: "This removes the set, all of its cards, and its study stats from local storage.",
@@ -1562,7 +1785,7 @@
         await deleteSet(setId);
         state.modal = null;
         if (state.route.view === "set" && state.route.setId === setId) {
-          location.hash = "#/";
+          navigateToLibrary();
         } else {
           render();
         }
@@ -1572,6 +1795,7 @@
   }
 
   function confirmDeleteCard(cardId) {
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete card?",
       copy: "This card will be permanently removed from the set.",
@@ -1588,21 +1812,75 @@
   function renderModal() {
     if (!state.modal) {
       els.modalRoot.innerHTML = "";
+      // Return focus to the element that triggered the modal
+      if (modalTriggerEl && typeof modalTriggerEl.focus === "function") {
+        modalTriggerEl.focus();
+        modalTriggerEl = null;
+      }
+      document.body.removeAttribute("aria-hidden");
       return;
     }
 
+    const confirmClass = state.modal.danger !== false ? "danger-button" : "button";
+    const inputHtml = state.modal.input
+      ? `<div class="field">
+           <label for="modal-input">${escapeHtml(state.modal.input.label || "")}</label>
+           <input id="modal-input" class="input modal__input" type="text"
+             value="${escapeHtml(state.modal.input.value || "")}"
+             placeholder="${escapeHtml(state.modal.input.placeholder || "")}"
+             autocomplete="off">
+         </div>`
+      : "";
+
     els.modalRoot.innerHTML = `
-      <div class="modal-backdrop">
+      <div class="modal-backdrop" aria-hidden="false">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
           <h2 id="modal-title">${escapeHtml(state.modal.title)}</h2>
-          <p>${escapeHtml(state.modal.copy)}</p>
+          ${state.modal.copy ? `<p>${escapeHtml(state.modal.copy)}</p>` : ""}
+          ${inputHtml}
           <div class="modal__actions">
             <button class="ghost-button" data-action="close-modal">Cancel</button>
-            <button class="danger-button" data-action="confirm-modal">${escapeHtml(state.modal.confirmLabel)}</button>
+            <button class="${confirmClass}" data-action="confirm-modal">${escapeHtml(state.modal.confirmLabel)}</button>
           </div>
         </div>
       </div>
     `;
+
+    // Prevent background interaction
+    els.appShell && els.appShell.setAttribute("aria-hidden", "true");
+
+    // Auto-focus: input if present, else confirm button
+    const focusTarget = els.modalRoot.querySelector("#modal-input") ||
+      els.modalRoot.querySelector("[data-action='confirm-modal']");
+    if (focusTarget) {
+      focusTarget.focus();
+      if (focusTarget.tagName === "INPUT") focusTarget.select();
+    }
+
+    // Focus trap
+    const modal = els.modalRoot.querySelector(".modal");
+    if (modal) {
+      modal.addEventListener("keydown", function (event) {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(modal.querySelectorAll(
+          "input, button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey) {
+          if (document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      });
+    }
   }
 
   function enableInlineEdit(element) {
@@ -1631,8 +1909,18 @@
 
     if (value === (element.dataset.originalValue || "").trim()) return;
 
-    if (kind === "folder") await updateFolderName(id, value);
-    if (kind === "set") await updateSetName(id, value);
+    if (kind === "folder") {
+      const dupe = state.folders.find((f) => f.id !== id && f.name.trim().toLowerCase() === value.toLowerCase());
+      if (dupe) { showToast("A folder with this name already exists."); element.textContent = element.dataset.originalValue || ""; return; }
+      await updateFolderName(id, value);
+    }
+    if (kind === "set") {
+      const set = getSet(id);
+      const sibs = set ? state.sets.filter((s) => s.folderId === set.folderId && s.id !== id) : [];
+      const dupe = sibs.find((s) => s.name.trim().toLowerCase() === value.toLowerCase());
+      if (dupe) { showToast("A set with this name already exists."); element.textContent = element.dataset.originalValue || ""; return; }
+      await updateSetName(id, value);
+    }
     if (kind === "card-term") await updateCardField(id, "term", value);
     if (kind === "card-definition") await updateCardField(id, "definition", value);
 
@@ -1805,7 +2093,7 @@
       .map((card) => `${card.term}, ${card.definition}`)
       .join("\n");
     downloadTextFile(`${sanitizeFileName(set.name)}.txt`, text);
-    localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Set exported");
     render();
   }
@@ -1816,7 +2104,7 @@
       return `# ${set.name}\n${lines}`;
     });
     downloadTextFile("carded-backup.txt", sections.join("\n\n"));
-    localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Backup exported");
     render();
   }
@@ -1833,23 +2121,71 @@
     URL.revokeObjectURL(url);
   }
 
-  function initStudySession(setId, shuffle = false) {
+  function saveStudySessionState() {
+    const s = state.studySession;
+    if (!s || s.complete) {
+      window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
+      return;
+    }
+    window.CardedUtils.safeSet(STUDY_SESSION_KEY, JSON.stringify({
+      setId: s.setId,
+      cardOrder: s.deck.map((c) => c.id),
+      currentIndex: s.index,
+      shuffle: s.shuffle,
+      direction: s.direction,
+      startedAt: s.startedAt || Date.now(),
+    }));
+  }
+
+  function loadSavedStudySession(setId) {
+    try {
+      const raw = window.CardedUtils.safeGet(STUDY_SESSION_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (saved.setId !== setId) return null;
+      // Validate: all saved card IDs still exist in this set
+      const currentCards = getCardsForSet(setId);
+      const currentIds = new Set(currentCards.map((c) => c.id));
+      if (!saved.cardOrder.every((id) => currentIds.has(id))) return null;
+      return saved;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function initStudySession(setId, shuffle = false, resumeData = null) {
     const cards = getCardsForSet(setId);
     if (!cards.length) {
       state.studySession = null;
       return;
     }
-    const deck = cards.slice();
-    if (shuffle) shuffleArray(deck);
+
+    let deck;
+    let index = 0;
+    let direction = "term-definition";
+    const cardMap = new Map(cards.map((c) => [c.id, c]));
+
+    if (resumeData) {
+      deck = resumeData.cardOrder.map((id) => cardMap.get(id)).filter(Boolean);
+      index = Math.min(resumeData.currentIndex, deck.length - 1);
+      direction = resumeData.direction || "term-definition";
+      shuffle = resumeData.shuffle || false;
+    } else {
+      deck = cards.slice();
+      if (shuffle) shuffleArray(deck);
+    }
+
     state.studySession = {
       setId,
       deck,
-      index: 0,
+      index,
       isFlipped: false,
       shuffle,
-      direction: "term-definition",
+      direction,
       complete: false,
+      startedAt: (resumeData && resumeData.startedAt) || Date.now(),
     };
+    saveStudySessionState();
   }
 
   async function advanceStudy(step) {
@@ -1858,6 +2194,7 @@
 
     if (step > 0 && session.index + 1 >= session.deck.length) {
       session.complete = true;
+      window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
       await recordStudyCompletion(session.setId, 100);
       render();
       return;
@@ -1865,6 +2202,7 @@
 
     session.index = Math.max(0, Math.min(session.deck.length - 1, session.index + step));
     session.isFlipped = false;
+    saveStudySessionState();
     render();
   }
 
@@ -2063,8 +2401,8 @@
 
   function shouldShowBackupBanner(totalCards) {
     if (totalCards <= 100) return false;
-    const lastExport = Number(localStorage.getItem(LAST_EXPORT_KEY) || 0);
-    const dismissed = Number(localStorage.getItem(BACKUP_DISMISS_KEY) || 0);
+    const lastExport = Number(window.CardedUtils.safeGet(LAST_EXPORT_KEY) || 0);
+    const dismissed = Number(window.CardedUtils.safeGet(BACKUP_DISMISS_KEY) || 0);
     const lastSeen = Math.max(lastExport, dismissed);
     return !lastSeen || Date.now() - lastSeen > 7 * DAY_MS;
   }
