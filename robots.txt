@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /carded/$
+Allow: /carded/tos
+Allow: /carded/privacy
+Disallow: /carded/signin
+Disallow: /carded/signup
+Disallow: /carded/login
+Disallow: /carded/library
+Disallow: /carded/study
+Disallow: /carded/account
+
+Sitemap: https://proxsyi.github.io/carded/sitemap.xml

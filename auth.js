@@ -1,219 +1,137 @@
 (function () {
   "use strict";
 
-  const SESSION_KEY = "carded_session";
   const PASSWORD_RECOVERY_KEY = "carded_password_recovery";
-  const AUTH_PAGES = new Set(["signin.html", "signup.html"]);
-
-  function requireSupabase() {
-    if (!window.supabaseClient) {
-      throw new Error("Supabase client is not initialized.");
-    }
-    return window.supabaseClient;
-  }
-
-  function getCurrentFileName() {
-    const path = window.location.pathname.split("/").filter(Boolean);
-    return path[path.length - 1] || "index.html";
-  }
-
-  function buildPageUrl(fileName) {
-    return new URL(fileName, window.location.href).toString();
-  }
-
-  function storeSession(session) {
-    if (!session) return;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-
-  function clearStoredSession() {
-    sessionStorage.removeItem(SESSION_KEY);
-  }
-
-  function setPasswordRecovery(enabled) {
-    if (enabled) {
-      sessionStorage.setItem(PASSWORD_RECOVERY_KEY, "1");
-    } else {
-      sessionStorage.removeItem(PASSWORD_RECOVERY_KEY);
-    }
-  }
-
-  function isPasswordRecoveryMode() {
-    return sessionStorage.getItem(PASSWORD_RECOVERY_KEY) === "1";
-  }
-
-  function redirectToSignIn() {
-    const returnTo = `${window.location.pathname}${window.location.hash || ""}`;
-    const target = new URL("signin.html", window.location.href);
-    if (getCurrentFileName() !== "signin.html") {
-      target.searchParams.set("returnTo", returnTo);
-    }
-    window.location.replace(target.toString());
-  }
-
-  function redirectToIndex() {
-    const params = new URLSearchParams(window.location.search);
-    const returnTo = params.get("returnTo");
-    if (returnTo) {
-      window.location.replace(returnTo);
-      return;
-    }
-    window.location.replace(buildPageUrl("index.html"));
-  }
 
   function showToast(message) {
     const root = document.getElementById("toast-root");
     if (!root) return;
-    root.innerHTML = `
-      <div class="toast" role="status">
-        <p>${escapeHtml(message)}</p>
-      </div>
-    `;
-    window.setTimeout(() => {
-      root.innerHTML = "";
+    root.textContent = "";
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.setAttribute("role", "status");
+    toast.textContent = message;
+    root.appendChild(toast);
+    window.setTimeout(function () {
+      toast.remove();
     }, 4000);
   }
 
-  function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  function setRecoveryFlag(enabled) {
+    if (enabled) {
+      window.CardedUtils.safeSet(PASSWORD_RECOVERY_KEY, "1", window.sessionStorage);
+      return;
+    }
+    window.CardedUtils.safeRemove(PASSWORD_RECOVERY_KEY, window.sessionStorage);
   }
 
-  async function getSession() {
-    const { data, error } = await requireSupabase().auth.getSession();
-    if (error) throw error;
-    return data.session;
+  function isPasswordRecoveryMode() {
+    return window.CardedUtils.safeGet(PASSWORD_RECOVERY_KEY, window.sessionStorage) === "1";
+  }
+
+  function isRateLimitError(error) {
+    return error && (
+      (error.status === 429) ||
+      (typeof error.message === "string" && error.message.toLowerCase().includes("rate limit"))
+    );
   }
 
   async function signInWithEmail(email, password) {
-    const { data, error } = await requireSupabase().auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
+    const response = await window.supabaseClient.auth.signInWithPassword({ email: email, password: password });
+    if (response.error) {
+      if (isRateLimitError(response.error)) {
+        throw new Error("Too many attempts. Please wait a minute and try again.");
+      }
+      // Enumeration-safe: don't reveal whether email or password was wrong
+      throw new Error("Invalid email or password.");
+    }
+    return response.data;
   }
 
   async function signUpWithEmail(email, password) {
-    const { data, error } = await requireSupabase().auth.signUp({ email, password });
-    if (error) throw error;
-    return data;
+    const response = await window.supabaseClient.auth.signUp({ email: email, password: password });
+    if (response.error) {
+      if (isRateLimitError(response.error)) {
+        throw new Error("Too many attempts. Please wait a minute and try again.");
+      }
+      // Enumeration-safe: don't confirm whether email already exists
+      throw new Error("Unable to create account. Try signing in instead.");
+    }
+    return response.data;
   }
 
   async function signInWithOAuth(provider) {
-    const { data, error } = await requireSupabase().auth.signInWithOAuth({
-      provider,
+    const response = await window.supabaseClient.auth.signInWithOAuth({
+      provider: provider,
       options: {
-        redirectTo: buildPageUrl("index.html"),
+        redirectTo: window.location.origin + window.BASE_PATH + "/library",
       },
     });
-    if (error) throw error;
-    return data;
+    if (response.error) throw response.error;
+    return response.data;
   }
 
   async function signOut() {
-    const { error } = await requireSupabase().auth.signOut();
-    if (error) throw error;
+    const response = await window.supabaseClient.auth.signOut();
+    if (response.error) throw response.error;
+  }
+
+  const RESET_COOLDOWN_KEY = "carded_reset_cooldown";
+  const RESET_COOLDOWN_MS = 30000;
+
+  function isResetOnCooldown() {
+    const ts = window.CardedUtils.safeGet(RESET_COOLDOWN_KEY, window.sessionStorage);
+    return ts && Date.now() - Number(ts) < RESET_COOLDOWN_MS;
+  }
+
+  function startResetCooldown() {
+    window.CardedUtils.safeSet(RESET_COOLDOWN_KEY, String(Date.now()), window.sessionStorage);
+  }
+
+  function resetCooldownRemaining() {
+    const ts = window.CardedUtils.safeGet(RESET_COOLDOWN_KEY, window.sessionStorage);
+    if (!ts) return 0;
+    return Math.max(0, Math.ceil((RESET_COOLDOWN_MS - (Date.now() - Number(ts))) / 1000));
   }
 
   async function resetPassword(email) {
-    const { data, error } = await requireSupabase().auth.resetPasswordForEmail(email, {
-      redirectTo: buildPageUrl("account.html"),
+    if (isResetOnCooldown()) {
+      throw new Error("Please wait " + resetCooldownRemaining() + "s before requesting another reset link.");
+    }
+    const response = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.BASE_PATH + "/account",
     });
-    if (error) throw error;
-    return data;
+    // Always start cooldown and show neutral message (enumeration-safe)
+    startResetCooldown();
+    if (response.error && isRateLimitError(response.error)) {
+      throw new Error("Too many attempts. Please wait a minute and try again.");
+    }
+    // Don't reveal whether email exists — always succeed from user's perspective
+    return response.data;
   }
 
   async function updatePassword(newPassword) {
-    const { data, error } = await requireSupabase().auth.updateUser({ password: newPassword });
-    if (error) throw error;
-    setPasswordRecovery(false);
-    return data;
+    const response = await window.supabaseClient.auth.updateUser({ password: newPassword });
+    if (response.error) throw response.error;
+    setRecoveryFlag(false);
+    return response.data;
   }
 
-  async function authGuard() {
-    const session = await getSession();
-    if (!session) {
-      redirectToSignIn();
-      return null;
+  window.addEventListener("carded:auth-state", function (event) {
+    if (event.detail.event === "PASSWORD_RECOVERY") {
+      setRecoveryFlag(true);
+      if (window.CardedUtils.currentPath() !== window.BASE_PATH + "/account") {
+        window.CardedUtils.redirectTo(window.BASE_PATH + "/account", null, true);
+      }
     }
-    storeSession(session);
-    return session;
-  }
-
-  function onAuthStateChange(callback) {
-    return requireSupabase().auth.onAuthStateChange(callback);
-  }
-
-  function dispatchAuthEvent(event, session) {
-    window.dispatchEvent(new CustomEvent("carded:auth-state", {
-      detail: { event, session },
-    }));
-  }
-
-  function registerGlobalAuthHandler() {
-    onAuthStateChange(async (event, session) => {
-      dispatchAuthEvent(event, session);
-
-      if (event === "SIGNED_IN") {
-        storeSession(session);
-        setPasswordRecovery(false);
-        window.dispatchEvent(new CustomEvent("carded:migration-check", {
-          detail: { session },
-        }));
-        if (AUTH_PAGES.has(getCurrentFileName())) {
-          redirectToIndex();
-        }
-        return;
-      }
-
-      if (event === "SIGNED_OUT") {
-        clearStoredSession();
-        setPasswordRecovery(false);
-        if (window.CardedSync && typeof window.CardedSync.unsubscribeAllRealtime === "function") {
-          await window.CardedSync.unsubscribeAllRealtime();
-        }
-        if (window.CardedDB && typeof window.CardedDB.clearAllTables === "function") {
-          await window.CardedDB.clearAllTables().catch(() => {});
-        }
-        if (!AUTH_PAGES.has(getCurrentFileName())) {
-          redirectToSignIn();
-        }
-        return;
-      }
-
-      if (event === "TOKEN_REFRESHED") {
-        console.debug("Supabase token refreshed.");
-        if (session) storeSession(session);
-        return;
-      }
-
-      if (event === "USER_UPDATED") {
-        if (session) storeSession(session);
-        return;
-      }
-
-      if (event === "PASSWORD_RECOVERY") {
-        setPasswordRecovery(true);
-        if (getCurrentFileName() !== "account.html") {
-          window.location.replace(buildPageUrl("account.html"));
-        } else {
-          showToast("Set a new password to finish recovery.");
-        }
-      }
-    });
-  }
-
-  registerGlobalAuthHandler();
+  });
 
   window.CardedAuth = {
-    authGuard,
-    getSession,
     isPasswordRecoveryMode,
-    onAuthStateChange,
-    redirectToIndex,
+    isResetOnCooldown,
+    resetCooldownRemaining,
     resetPassword,
+    setRecoveryFlag,
     showToast,
     signInWithEmail,
     signInWithOAuth,

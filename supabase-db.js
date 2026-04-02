@@ -41,7 +41,7 @@
         if (window.CardedAuth && typeof window.CardedAuth.showToast === "function") {
           window.CardedAuth.showToast("Session expired. Please sign in again.");
         }
-        window.location.replace(new URL("signin.html", window.location.href).toString());
+        window.location.replace(window.location.origin + window.BASE_PATH + "/signin");
         throw error;
       }
 

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> db -> auth -> supabase-db -> sync -> app -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Library</title>
+    <meta name="description" content="Browse your Carded library of folders, sets, and flashcards.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
+    <script src="/carded/config.js?v=3.0.0" defer></script>
+    <script src="/carded/utils.js?v=3.0.0" defer></script>
+    <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
+    <script src="/carded/db.js?v=3.0.0" defer></script>
+    <script src="/carded/auth.js?v=3.0.0" defer></script>
+    <script src="/carded/supabase-db.js?v=3.0.0" defer></script>
+    <script src="/carded/sync.js?v=3.0.0" defer></script>
+    <script src="/carded/app.js?v=3.0.0" defer></script>
+  </head>
+  <body>
+    <a href="#app" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <div id="auth-loading" class="auth-loading">
+      <div class="auth-loading__spinner" aria-hidden="true"></div>
+      <p>Signing you in...</p>
+    </div>
+    <div id="install-banner" class="install-banner hidden">
+      <p>Install Carded for offline access.</p>
+      <button id="install-button" class="button" type="button">Install</button>
+    </div>
+    <div id="storage-error" class="storage-error hidden" role="alertdialog" aria-labelledby="storage-error-title" aria-describedby="storage-error-copy">
+      <div class="storage-error__panel">
+        <p class="eyebrow">Carded</p>
+        <h1 id="storage-error-title">Storage is unavailable</h1>
+        <p id="storage-error-copy">Carded needs browser storage to save your cards. Try using a regular browser window.</p>
+      </div>
+    </div>
+    <div id="app-shell" class="app-shell hidden">
+      <header class="topbar">
+        <div class="topbar__brand">
+          <a href="/carded/library" class="brand-link" aria-label="Go to library">
+            <span class="brand-mark" aria-hidden="true">🃏</span>
+            <span class="brand-text">Carded</span>
+          </a>
+        </div>
+        <div class="topbar__actions" id="header-actions"></div>
+      </header>
+      <main id="app" class="page"></main>
+    </div>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <div id="modal-root"></div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", async function () {
+        await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        var deferredPrompt = null;
+        window.addEventListener("beforeinstallprompt", function (event) {
+          event.preventDefault();
+          deferredPrompt = event;
+          var count = Number(window.CardedUtils.safeGet("carded_install_prompt_count") || 0) + 1;
+          window.CardedUtils.safeSet("carded_install_prompt_count", String(count));
+          if (count > 1 && !window.CardedUtils.safeGet("carded_install_prompt_dismissed")) {
+            document.getElementById("install-banner").classList.remove("hidden");
+          }
+        });
+        document.getElementById("install-button").addEventListener("click", async function () {
+          if (!deferredPrompt) return;
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice.catch(function () {
+            return null;
+          });
+          window.CardedUtils.safeSet("carded_install_prompt_dismissed", "1");
+          document.getElementById("install-banner").classList.add("hidden");
+          deferredPrompt = null;
+        });
+      });
+    </script>
+  </body>
+</html>

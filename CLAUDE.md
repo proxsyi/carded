@@ -1,0 +1,70 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Project Is
+
+Carded is an offline-first flashcard PWA built with zero build tooling — no bundler, no npm, no transpilation. It's a static site deployed to GitHub Pages at `/carded/` subpath. External libraries (Dexie.js v4, Supabase v2) are loaded via CDN.
+
+## Local Development
+
+```bash
+# Serve locally (required — file:// breaks service workers and Supabase auth redirects)
+python3 -m http.server 8080
+# Then open: http://localhost:8080/carded/
+```
+
+No install step. No build step. Edit files and refresh.
+
+## Deployment
+
+Push to the `main` branch — GitHub Actions auto-deploys to GitHub Pages. Production URL: `https://proxsyi.github.io/carded/`
+
+## Architecture
+
+### Module System
+
+All JS files are IIFEs that expose a single global namespace. Load order in HTML `<head>` matters:
+
+1. `config.js` → `window.CardedConfig` + `window.supabaseClient`
+2. `utils.js` → `window.CardedUtils`
+3. `auth-guard.js` → runs immediately on load (redirects unauthenticated users)
+4. `auth.js` → `window.CardedAuth`
+5. `db.js` → `window.CardedDB` (Dexie/IndexedDB wrapper)
+6. `supabase-db.js` → `window.CardedSupabaseDB`
+7. `sync.js` → `window.CardedSync` (offline queue + Supabase Realtime)
+8. `app.js` → `window.CardedApp` (state, routing, all rendering)
+
+### Routing
+
+Routes are folder-based clean URLs (`/carded/library/`, `/carded/study/`), each with its own `index.html`. Within `library/`, routing is query-param based via `app.js`:
+
+- `?folder=ID` → folder view
+- `?set=ID` → set/cards view
+- `?set=ID&mode=study` → flip-card study mode
+- `?set=ID&mode=learn` → multiple-choice learn mode
+
+### Data Layer
+
+Dual-persistence: **IndexedDB (Dexie)** for local-first storage + **Supabase (PostgreSQL + Auth + Realtime)** for cloud sync.
+
+Mutation flow:
+1. Write to IndexedDB immediately (optimistic)
+2. Queue to `sync.js` offline queue (localStorage)
+3. If online → flush queue to Supabase via `supabase-db.js`
+4. Supabase Realtime broadcasts change → `carded:data-changed` custom event → `app.js` re-renders
+
+### State Management
+
+`app.js` owns a single `state` object. UI updates happen via `render()` which switches on `state.route.view`. Custom DOM events (`carded:data-changed`, `carded:connectivity`) trigger re-renders — there is no reactive framework.
+
+### Service Worker
+
+`sw.js` uses cache-first for static assets, network-only for Supabase API calls. Update `APP_VERSION` in `config.js` to bust the SW cache on deploy.
+
+## Key Constraints
+
+- **No ES modules** (`import`/`export`) — everything is globals via IIFE. New JS files must follow the same pattern.
+- **BASE_PATH is `/carded`** — all internal links and API redirects must use `CardedUtils.buildPath()` or hardcode this prefix. Never use bare `/` paths.
+- **GitHub Pages serves from `/carded/`** — the `404.html` handles SPA fallback routing for direct URL access.
+- **Supabase anon key is intentionally public** — RLS policies on the database enforce access control, not the key.

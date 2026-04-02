@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> db -> auth -> supabase-db -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Account</title>
+    <meta name="description" content="Manage your Carded account, password, and study stats.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
+    <script src="/carded/config.js?v=3.0.0" defer></script>
+    <script src="/carded/utils.js?v=3.0.0" defer></script>
+    <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
+    <script src="/carded/db.js?v=3.0.0" defer></script>
+    <script src="/carded/auth.js?v=3.0.0" defer></script>
+    <script src="/carded/supabase-db.js?v=3.0.0" defer></script>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <main class="auth-shell" id="main">
+      <section class="auth-card account-card">
+        <div class="auth-header-row">
+          <div>
+            <p class="eyebrow">Carded</p>
+            <h1>Account</h1>
+          </div>
+          <a class="ghost-button" href="/carded/library">Back to library</a>
+        </div>
+
+        <section id="account-view" class="stack hidden">
+          <div class="panel account-summary">
+            <div class="field">
+              <span class="meta-label">Email</span>
+              <strong id="account-email">-</strong>
+            </div>
+            <div class="field">
+              <span class="meta-label">Provider</span>
+              <strong id="account-provider">-</strong>
+            </div>
+            <div class="field">
+              <span class="meta-label">Account created</span>
+              <strong id="account-created">-</strong>
+            </div>
+          </div>
+
+          <section class="stack">
+            <div class="section-header">
+              <div class="stack">
+                <h2 class="section-title">Usage stats</h2>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div class="stat-card"><div class="meta-label">Study time</div><div id="stats-time" class="stat-value">0m</div></div>
+              <div class="stat-card"><div class="meta-label">Cards reviewed</div><div id="stats-reviewed" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Sessions</div><div id="stats-sessions" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Current streak</div><div id="stats-current-streak" class="stat-value">0</div></div>
+              <div class="stat-card"><div class="meta-label">Longest streak</div><div id="stats-longest-streak" class="stat-value">0</div></div>
+            </div>
+          </section>
+
+          <form id="password-form" class="stack panel">
+            <h2>Change password</h2>
+            <div class="field">
+              <label for="new-password">New password</label>
+              <input id="new-password" name="newPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="confirm-password">Confirm password</label>
+              <input id="confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <button class="button" type="submit">Update password</button>
+          </form>
+
+          <div class="account-actions">
+            <button id="signout-button" class="ghost-button" type="button">Sign out</button>
+            <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
+          </div>
+          <p class="meta-copy" style="text-align:center;margin-top:8px">v<span id="app-version">3.0.0</span></p>
+        </section>
+
+        <section id="recovery-view" class="stack hidden">
+          <p class="eyebrow">Password recovery</p>
+          <h1>Set a new password</h1>
+          <form id="recovery-form" class="stack panel">
+            <div class="field">
+              <label for="recovery-password">New password</label>
+              <input id="recovery-password" name="newPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <div class="field">
+              <label for="recovery-confirm-password">Confirm password</label>
+              <input id="recovery-confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+            </div>
+            <button class="button" type="submit">Set new password</button>
+          </form>
+        </section>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <div id="delete-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+      <div class="modal">
+        <h2 id="delete-modal-title">Delete account?</h2>
+        <p>This permanently removes all your data. Type your email to confirm.</p>
+        <div class="field">
+          <label for="delete-confirm-email">Your email</label>
+          <input id="delete-confirm-email" class="input modal__input" type="email" autocomplete="off" placeholder="your@email.com">
+          <p id="delete-email-error" class="field-error hidden">Email doesn't match.</p>
+        </div>
+        <div class="modal__actions">
+          <button id="cancel-delete-button" class="ghost-button" type="button">Cancel</button>
+          <button id="confirm-delete-button" class="danger-button" type="button">Delete account</button>
+        </div>
+      </div>
+    </div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", async function () {
+        const session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        if (!session) return;
+
+        const accountView = document.getElementById("account-view");
+        const recoveryView = document.getElementById("recovery-view");
+        const deleteModal = document.getElementById("delete-modal");
+
+        function formatDate(value) {
+          return value ? new Date(value).toLocaleDateString() : "-";
+        }
+
+        function formatStudyTime(totalSeconds) {
+          return Math.floor((Number(totalSeconds) || 0) / 60) + "m";
+        }
+
+        function toggleRecoveryMode(enabled) {
+          accountView.classList.toggle("hidden", enabled);
+          recoveryView.classList.toggle("hidden", !enabled);
+        }
+
+        toggleRecoveryMode(window.CardedAuth.isPasswordRecoveryMode());
+        accountView.classList.remove("hidden");
+        document.getElementById("app-version").textContent = window.APP_VERSION || "3.0.0";
+        document.getElementById("account-email").textContent = session.user.email || "-";
+        document.getElementById("account-provider").textContent = "Signed in with " + String((session.user.app_metadata && session.user.app_metadata.provider) || "email");
+        document.getElementById("account-created").textContent = formatDate(session.user.created_at);
+
+        try {
+          const stats = await window.CardedSupabaseDB.getOrCreateStats(session.user.id);
+          document.getElementById("stats-time").textContent = formatStudyTime(stats.total_study_time);
+          document.getElementById("stats-reviewed").textContent = String(stats.total_cards_reviewed || 0);
+          document.getElementById("stats-sessions").textContent = String(stats.total_sessions || 0);
+          document.getElementById("stats-current-streak").textContent = String(stats.current_streak || 0);
+          document.getElementById("stats-longest-streak").textContent = String(stats.longest_streak || 0);
+        } catch (error) {
+          window.CardedAuth.showToast("Something went wrong. Please try again.");
+        }
+
+        async function handlePasswordUpdate(form) {
+          const data = new FormData(form);
+          const password = String(data.get("newPassword") || "");
+          const confirmPassword = String(data.get("confirmPassword") || "");
+          if (password !== confirmPassword) {
+            window.CardedAuth.showToast("Passwords do not match.");
+            return;
+          }
+          try {
+            await window.CardedAuth.updatePassword(password);
+            form.reset();
+            toggleRecoveryMode(false);
+            accountView.classList.remove("hidden");
+            window.history.replaceState(null, "", window.location.pathname);
+            window.CardedAuth.showToast("Password updated.");
+          } catch (error) {
+            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+          }
+        }
+
+        document.getElementById("password-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          handlePasswordUpdate(event.currentTarget);
+        });
+
+        document.getElementById("recovery-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          handlePasswordUpdate(event.currentTarget);
+        });
+
+        async function clearLocalUserData(uid) {
+          if (window.CardedDB) {
+            try {
+              const tables = ["folders", "sets", "cards", "user_card_progress", "user_stats"];
+              for (const table of tables) {
+                await window.CardedDB.deleteWhere(table, function (row) {
+                  return row.user_id === uid;
+                }).catch(function () {});
+              }
+            } catch (_) {}
+          }
+          // Clear session cache and sync queue
+          ["carded_user_email", "carded_user_id", "carded_sync_queue", "carded_return_url"].forEach(function (key) {
+            window.CardedUtils.safeRemove(key);
+          });
+        }
+
+        document.getElementById("signout-button").addEventListener("click", async function () {
+          const uid = session.user.id;
+          // Warn if there are unsynced changes
+          var rawQueue = window.CardedUtils.safeGet("carded_sync_queue");
+          var queue = [];
+          try { queue = rawQueue ? JSON.parse(rawQueue) : []; } catch (_) {}
+          if (queue.length > 0) {
+            var confirmed = window.confirm("You have " + queue.length + " unsynced change" + (queue.length !== 1 ? "s" : "") + ". They'll be lost if you sign out. Continue?");
+            if (!confirmed) return;
+          }
+          try {
+            await clearLocalUserData(uid);
+            await window.CardedAuth.signOut().catch(function () {
+              // If signOut fails (offline), manually clear auth token
+              var sbKey = "sb-" + window.SUPABASE_URL.match(/\/\/([^.]+)/)[1] + "-auth-token";
+              window.CardedUtils.safeRemove(sbKey);
+            });
+            window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
+          } catch (error) {
+            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+          }
+        });
+
+        var deleteModalPreviousFocus = null;
+        var deleteConfirmEmail = document.getElementById("delete-confirm-email");
+        var deleteEmailError = document.getElementById("delete-email-error");
+
+        function openDeleteModal() {
+          deleteModalPreviousFocus = document.activeElement;
+          deleteConfirmEmail.value = "";
+          deleteEmailError.classList.add("hidden");
+          deleteModal.classList.remove("hidden");
+          deleteConfirmEmail.focus();
+          // Focus trap
+          deleteModal.querySelector(".modal").addEventListener("keydown", function onModalKey(event) {
+            if (event.key === "Escape") {
+              closeDeleteModal();
+              return;
+            }
+            if (event.key !== "Tab") return;
+            var focusable = Array.from(deleteModal.querySelectorAll("input, button:not([disabled])"));
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+            if (event.shiftKey) {
+              if (document.activeElement === first) { event.preventDefault(); last.focus(); }
+            } else {
+              if (document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+          });
+        }
+
+        function closeDeleteModal() {
+          deleteModal.classList.add("hidden");
+          deleteEmailError.classList.add("hidden");
+          if (deleteModalPreviousFocus && typeof deleteModalPreviousFocus.focus === "function") {
+            deleteModalPreviousFocus.focus();
+          }
+        }
+
+        document.getElementById("delete-account-button").addEventListener("click", openDeleteModal);
+        document.getElementById("cancel-delete-button").addEventListener("click", closeDeleteModal);
+
+        document.getElementById("confirm-delete-button").addEventListener("click", async function () {
+          var typedEmail = deleteConfirmEmail.value.trim().toLowerCase();
+          var userEmail = (session.user.email || "").toLowerCase();
+          if (typedEmail !== userEmail) {
+            deleteEmailError.classList.remove("hidden");
+            deleteConfirmEmail.focus();
+            return;
+          }
+          deleteEmailError.classList.add("hidden");
+          try {
+            const response = await window.supabaseClient.rpc("delete_user");
+            if (response.error) throw response.error;
+            await window.CardedAuth.signOut();
+            window.CardedUtils.redirectTo(window.BASE_PATH, null, true);
+          } catch (error) {
+            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+          } finally {
+            closeDeleteModal();
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
