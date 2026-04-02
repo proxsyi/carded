@@ -42,6 +42,8 @@
     headerActions: null,
   };
   let writeQueue = Promise.resolve();
+  let modalTriggerEl = null;
+  let dirtyEditor = false;
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -523,6 +525,19 @@
     }
   }
 
+  function setDirty(isDirty) {
+    dirtyEditor = isDirty;
+    if (isDirty) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    } else {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    }
+  }
+
+  function handleBeforeUnload(event) {
+    event.preventDefault();
+  }
+
   function bindGlobalEvents() {
     document.addEventListener("click", onDocumentClick);
     document.addEventListener("submit", onDocumentSubmit);
@@ -575,6 +590,7 @@
   }
 
   function navigateToLibrary(options, replace) {
+    setDirty(false);
     const href = buildLibraryHref(options);
     if (replace) {
       window.location.replace(href);
@@ -1307,13 +1323,18 @@
           state.modal.onCancel();
         }
         state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
         renderModal();
         break;
-      case "confirm-modal":
+      case "confirm-modal": {
         if (state.modal && typeof state.modal.onConfirm === "function") {
-          state.modal.onConfirm();
+          const inputEl = els.modalRoot.querySelector("#modal-input");
+          const inputValue = inputEl ? inputEl.value : undefined;
+          const confirmBtn = target;
+          window.CardedUtils.withLoading(confirmBtn, () => state.modal.onConfirm(inputValue));
         }
         break;
+      }
     }
   }
 
@@ -1334,6 +1355,7 @@
         if (!term || !definition) return;
         await addCard(setId, term, definition);
         form.reset();
+        setDirty(false);
         render();
         showToast("Card added");
       }
@@ -1385,6 +1407,16 @@
     if (target.matches("[data-action='search-library']")) {
       state.search = target.value;
       render();
+      return;
+    }
+
+    // Track dirty state for the add-card form
+    const cardForm = target.closest("[data-form='add-card']");
+    if (cardForm) {
+      const term = cardForm.querySelector("[name='term']");
+      const def = cardForm.querySelector("[name='definition']");
+      const hasContent = (term && term.value.trim()) || (def && def.value.trim());
+      setDirty(Boolean(hasContent));
     }
   }
 
@@ -1392,10 +1424,22 @@
     const target = event.target;
     const typingContext = isTypingContext(target);
 
+    if (event.key === "Enter" && state.modal) {
+      const inputEl = els.modalRoot && els.modalRoot.querySelector("#modal-input");
+      if (inputEl && document.activeElement === inputEl) {
+        event.preventDefault();
+        const confirmBtn = els.modalRoot.querySelector("[data-action='confirm-modal']");
+        confirmBtn && confirmBtn.click();
+        return;
+      }
+    }
+
     if (event.key === "Escape") {
       event.preventDefault();
       if (state.modal) {
+        if (typeof state.modal.onCancel === "function") state.modal.onCancel();
         state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
         renderModal();
         return;
       }
@@ -1561,24 +1605,57 @@
     state.drag.cardId = null;
   }
 
-  async function promptCreateFolder() {
-    const name = window.prompt("Folder name");
-    if (!name || !name.trim()) return;
-    await createFolder(name.trim());
-    render();
+  function promptCreateFolder() {
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      title: "New folder",
+      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "" },
+      confirmLabel: "Create",
+      danger: false,
+      onConfirm: async function (inputValue) {
+        const name = (inputValue || "").trim();
+        if (!name) { showToast("Name can't be empty."); return; }
+        const dupe = state.folders.find((f) => f.name.trim().toLowerCase() === name.toLowerCase());
+        if (dupe) { showToast("A folder with this name already exists."); return; }
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        await createFolder(name);
+        render();
+      },
+    };
+    renderModal();
   }
 
-  async function promptCreateSet(folderId = null) {
-    const name = window.prompt("Set name");
-    if (!name || !name.trim()) return;
-    const set = await createSet(name.trim(), folderId || null);
-    render();
-    navigateToLibrary({ setId: set.id });
+  function promptCreateSet(folderId) {
+    folderId = folderId || null;
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      title: "New set",
+      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "" },
+      confirmLabel: "Create",
+      danger: false,
+      onConfirm: async function (inputValue) {
+        const name = (inputValue || "").trim();
+        if (!name) { showToast("Name can't be empty."); return; }
+        const siblingSets = state.sets.filter((s) => s.folderId === folderId);
+        const dupe = siblingSets.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+        if (dupe) { showToast("A set with this name already exists."); return; }
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        const set = await createSet(name, folderId);
+        render();
+        navigateToLibrary({ setId: set.id });
+      },
+    };
+    renderModal();
   }
 
   function confirmDeleteFolder(folderId) {
     const folder = getFolder(folderId);
     if (!folder) return;
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete folder?",
       copy: "Sets inside this folder will become standalone. The folder itself will be removed.",
@@ -1595,6 +1672,7 @@
   function confirmDeleteSet(setId) {
     const set = getSet(setId);
     if (!set) return;
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete set?",
       copy: "This removes the set, all of its cards, and its study stats from local storage.",
@@ -1613,6 +1691,7 @@
   }
 
   function confirmDeleteCard(cardId) {
+    modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete card?",
       copy: "This card will be permanently removed from the set.",
@@ -1629,21 +1708,75 @@
   function renderModal() {
     if (!state.modal) {
       els.modalRoot.innerHTML = "";
+      // Return focus to the element that triggered the modal
+      if (modalTriggerEl && typeof modalTriggerEl.focus === "function") {
+        modalTriggerEl.focus();
+        modalTriggerEl = null;
+      }
+      document.body.removeAttribute("aria-hidden");
       return;
     }
 
+    const confirmClass = state.modal.danger !== false ? "danger-button" : "button";
+    const inputHtml = state.modal.input
+      ? `<div class="field">
+           <label for="modal-input">${escapeHtml(state.modal.input.label || "")}</label>
+           <input id="modal-input" class="input modal__input" type="text"
+             value="${escapeHtml(state.modal.input.value || "")}"
+             placeholder="${escapeHtml(state.modal.input.placeholder || "")}"
+             autocomplete="off">
+         </div>`
+      : "";
+
     els.modalRoot.innerHTML = `
-      <div class="modal-backdrop">
+      <div class="modal-backdrop" aria-hidden="false">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
           <h2 id="modal-title">${escapeHtml(state.modal.title)}</h2>
-          <p>${escapeHtml(state.modal.copy)}</p>
+          ${state.modal.copy ? `<p>${escapeHtml(state.modal.copy)}</p>` : ""}
+          ${inputHtml}
           <div class="modal__actions">
             <button class="ghost-button" data-action="close-modal">Cancel</button>
-            <button class="danger-button" data-action="confirm-modal">${escapeHtml(state.modal.confirmLabel)}</button>
+            <button class="${confirmClass}" data-action="confirm-modal">${escapeHtml(state.modal.confirmLabel)}</button>
           </div>
         </div>
       </div>
     `;
+
+    // Prevent background interaction
+    els.appShell && els.appShell.setAttribute("aria-hidden", "true");
+
+    // Auto-focus: input if present, else confirm button
+    const focusTarget = els.modalRoot.querySelector("#modal-input") ||
+      els.modalRoot.querySelector("[data-action='confirm-modal']");
+    if (focusTarget) {
+      focusTarget.focus();
+      if (focusTarget.tagName === "INPUT") focusTarget.select();
+    }
+
+    // Focus trap
+    const modal = els.modalRoot.querySelector(".modal");
+    if (modal) {
+      modal.addEventListener("keydown", function (event) {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(modal.querySelectorAll(
+          "input, button:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey) {
+          if (document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      });
+    }
   }
 
   function enableInlineEdit(element) {
@@ -1672,8 +1805,18 @@
 
     if (value === (element.dataset.originalValue || "").trim()) return;
 
-    if (kind === "folder") await updateFolderName(id, value);
-    if (kind === "set") await updateSetName(id, value);
+    if (kind === "folder") {
+      const dupe = state.folders.find((f) => f.id !== id && f.name.trim().toLowerCase() === value.toLowerCase());
+      if (dupe) { showToast("A folder with this name already exists."); element.textContent = element.dataset.originalValue || ""; return; }
+      await updateFolderName(id, value);
+    }
+    if (kind === "set") {
+      const set = getSet(id);
+      const sibs = set ? state.sets.filter((s) => s.folderId === set.folderId && s.id !== id) : [];
+      const dupe = sibs.find((s) => s.name.trim().toLowerCase() === value.toLowerCase());
+      if (dupe) { showToast("A set with this name already exists."); element.textContent = element.dataset.originalValue || ""; return; }
+      await updateSetName(id, value);
+    }
     if (kind === "card-term") await updateCardField(id, "term", value);
     if (kind === "card-definition") await updateCardField(id, "definition", value);
 

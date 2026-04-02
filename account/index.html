@@ -23,6 +23,8 @@
     <script src="/carded/supabase-db.js" defer></script>
   </head>
   <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
     <main class="auth-shell" id="main">
       <section class="auth-card account-card">
         <div class="auth-header-row">
@@ -101,10 +103,15 @@
       </section>
     </main>
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
-    <div id="delete-modal" class="modal-backdrop hidden">
+    <div id="delete-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
       <div class="modal">
-        <h2>Delete account?</h2>
-        <p>This removes your Carded data from the cloud. This action cannot be undone.</p>
+        <h2 id="delete-modal-title">Delete account?</h2>
+        <p>This permanently removes all your data. Type your email to confirm.</p>
+        <div class="field">
+          <label for="delete-confirm-email">Your email</label>
+          <input id="delete-confirm-email" class="input modal__input" type="email" autocomplete="off" placeholder="your@email.com">
+          <p id="delete-email-error" class="field-error hidden">Email doesn't match.</p>
+        </div>
         <div class="modal__actions">
           <button id="cancel-delete-button" class="ghost-button" type="button">Cancel</button>
           <button id="confirm-delete-button" class="danger-button" type="button">Delete account</button>
@@ -189,15 +196,54 @@
           }
         });
 
-        document.getElementById("delete-account-button").addEventListener("click", function () {
-          deleteModal.classList.remove("hidden");
-        });
+        var deleteModalPreviousFocus = null;
+        var deleteConfirmEmail = document.getElementById("delete-confirm-email");
+        var deleteEmailError = document.getElementById("delete-email-error");
 
-        document.getElementById("cancel-delete-button").addEventListener("click", function () {
+        function openDeleteModal() {
+          deleteModalPreviousFocus = document.activeElement;
+          deleteConfirmEmail.value = "";
+          deleteEmailError.classList.add("hidden");
+          deleteModal.classList.remove("hidden");
+          deleteConfirmEmail.focus();
+          // Focus trap
+          deleteModal.querySelector(".modal").addEventListener("keydown", function onModalKey(event) {
+            if (event.key === "Escape") {
+              closeDeleteModal();
+              return;
+            }
+            if (event.key !== "Tab") return;
+            var focusable = Array.from(deleteModal.querySelectorAll("input, button:not([disabled])"));
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+            if (event.shiftKey) {
+              if (document.activeElement === first) { event.preventDefault(); last.focus(); }
+            } else {
+              if (document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+          });
+        }
+
+        function closeDeleteModal() {
           deleteModal.classList.add("hidden");
-        });
+          deleteEmailError.classList.add("hidden");
+          if (deleteModalPreviousFocus && typeof deleteModalPreviousFocus.focus === "function") {
+            deleteModalPreviousFocus.focus();
+          }
+        }
+
+        document.getElementById("delete-account-button").addEventListener("click", openDeleteModal);
+        document.getElementById("cancel-delete-button").addEventListener("click", closeDeleteModal);
 
         document.getElementById("confirm-delete-button").addEventListener("click", async function () {
+          var typedEmail = deleteConfirmEmail.value.trim().toLowerCase();
+          var userEmail = (session.user.email || "").toLowerCase();
+          if (typedEmail !== userEmail) {
+            deleteEmailError.classList.remove("hidden");
+            deleteConfirmEmail.focus();
+            return;
+          }
+          deleteEmailError.classList.add("hidden");
           try {
             const response = await window.supabaseClient.rpc("delete_user");
             if (response.error) throw response.error;
@@ -206,7 +252,7 @@
           } catch (error) {
             window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
           } finally {
-            deleteModal.classList.add("hidden");
+            closeDeleteModal();
           }
         });
       });

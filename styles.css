@@ -20,6 +20,41 @@
   outline: none;
 }
 
+/* Prevent text selection on interactive chrome */
+.button,
+.ghost-button,
+.danger-button,
+.pill-button,
+.icon-button,
+.link-button,
+.topbar,
+.breadcrumbs,
+.modal-backdrop,
+.tile,
+.card-row,
+.empty-state,
+.install-banner,
+nav {
+  user-select: none;
+}
+
+/* Fast tap on all interactive elements (removes 300ms delay) */
+.button,
+.ghost-button,
+.danger-button,
+.pill-button,
+.icon-button,
+.link-button,
+.tile,
+.card-row,
+.account-link,
+a,
+label,
+[role="button"],
+[tabindex] {
+  touch-action: manipulation;
+}
+
 html {
   color-scheme: dark;
 }
@@ -951,6 +986,7 @@ select:focus-visible,
 
 .auth-loading {
   min-height: 100vh;
+  min-height: 100dvh;
   justify-content: center;
   flex-direction: column;
   gap: 14px;
@@ -1066,5 +1102,98 @@ select:focus-visible,
   .control-row,
   .session-toolbar {
     align-items: stretch;
+  }
+}
+
+/* Skip-to-main link (keyboard a11y) */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 4px;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #121219;
+  font-weight: 700;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Modal input variant */
+.modal__input {
+  width: 100%;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+/* Loading state on buttons */
+.button[data-loading="true"],
+.ghost-button[data-loading="true"],
+.danger-button[data-loading="true"] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Inline form error */
+.field-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: 0.88rem;
+}
+
+/* Print stylesheet */
+@media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .topbar,
+  .breadcrumbs,
+  .control-row,
+  .set-toolbar,
+  .session-toolbar,
+  .summary-actions,
+  .import-panel,
+  .import-panel__actions,
+  .modal-backdrop,
+  .toast-root,
+  .install-banner,
+  .offline-banner,
+  .empty-state__actions,
+  .account-link,
+  .skip-link,
+  [data-action],
+  footer {
+    display: none !important;
+  }
+
+  .tile,
+  .card-row,
+  .panel,
+  .stat-card {
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .tile__name,
+  .view-title,
+  .section-title,
+  h1, h2, h3 {
+    color: #111 !important;
+  }
+
+  .card-content__value,
+  .meta-label,
+  .meta-inline,
+  .section-copy {
+    color: #444 !important;
   }
 }

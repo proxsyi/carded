@@ -21,6 +21,8 @@
     <script src="/carded/auth.js" defer></script>
   </head>
   <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
     <main class="auth-shell" id="main">
       <section class="auth-card">
         <p class="eyebrow">Carded</p>
@@ -96,19 +98,26 @@
 
         document.getElementById("signup-form").addEventListener("submit", async function (event) {
           event.preventDefault();
+          const submitBtn = event.currentTarget.querySelector("[type='submit']");
           const data = new FormData(event.currentTarget);
           const password = String(data.get("password") || "");
           const confirmPassword = String(data.get("confirmPassword") || "");
+          if (password.length < 6) {
+            window.CardedAuth.showToast("Password must be at least 6 characters.");
+            return;
+          }
           if (password !== confirmPassword) {
             window.CardedAuth.showToast("Passwords do not match.");
             return;
           }
-          try {
-            await window.CardedAuth.signUpWithEmail(String(data.get("email") || "").trim(), password);
-            window.CardedAuthGuard.redirectAuthedHome();
-          } catch (error) {
-            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
-          }
+          window.CardedUtils.withLoading(submitBtn, async function () {
+            try {
+              await window.CardedAuth.signUpWithEmail(String(data.get("email") || "").trim(), password);
+              window.CardedAuthGuard.redirectAuthedHome();
+            } catch (error) {
+              window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+            }
+          });
         });
 
         document.querySelectorAll("[data-oauth]").forEach(function (button) {
