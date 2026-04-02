@@ -87,11 +87,24 @@
       renderLoadingState();
     }, 5000);
 
+    // Safari private browsing detection — Dexie fails to write
     try {
-      const bundle = await window.CardedSync.initSync(state.userId);
+      await window.CardedDB.put("_healthcheck", { id: "__health__" }).catch(() => {});
+    } catch (_) {
+      showStorageError();
+      return;
+    }
+
+    try {
+      const bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
       state.online = window.CardedSync.isOnline();
       await loadAll(bundle);
+      await cleanOrphanedLocalData();
     } catch (error) {
+      if (error && error.name === "OpenFailedError") {
+        showStorageError();
+        return;
+      }
       console.error(error);
       showStorageError();
       return;
@@ -106,6 +119,15 @@
     window.addEventListener("carded:data-changed", reloadFromCacheAndRender);
     window.addEventListener("carded:connectivity", handleConnectivityChange);
     window.addEventListener("carded:auth-state", handleAuthEvent);
+    window.addEventListener("carded:sync-paused", function () {
+      showToast("Sync paused — will retry automatically.");
+    });
+    window.addEventListener("carded:sync-overflow", function () {
+      showToast("Too many offline changes. Please connect to sync before making more edits.");
+    });
+    window.addEventListener("carded:session-expired", function () {
+      window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
+    });
     handleRouteChange();
     maybePromptLegacyMigration();
     document.body.classList.add("ready");
@@ -134,6 +156,37 @@
       return mapCardRowToState(row, progressByCardId.get(row.id));
     });
     state.stats = mapStatsRowToState(cached.stats);
+  }
+
+  async function cleanOrphanedLocalData() {
+    const folderIds = new Set(state.folders.map((f) => f.id));
+    const setIds = new Set(state.sets.map((s) => s.id));
+    const cardIds = new Set(state.cards.map((c) => c.id));
+
+    // Sets whose folder no longer exists
+    const orphanedSets = state.sets.filter((s) => s.folderId && !folderIds.has(s.folderId));
+    for (const set of orphanedSets) {
+      await window.CardedDB.deleteById("sets", set.id);
+    }
+
+    // Cards whose set no longer exists
+    const orphanedCards = state.cards.filter((c) => !setIds.has(c.setId));
+    for (const card of orphanedCards) {
+      await window.CardedDB.deleteById("cards", card.id);
+    }
+
+    // Progress entries whose card no longer exists
+    const allProgress = await window.CardedDB.getAll("user_card_progress").catch(() => []);
+    for (const row of allProgress) {
+      if (!cardIds.has(row.card_id)) {
+        await window.CardedDB.deleteById("user_card_progress", row.id);
+      }
+    }
+
+    const cleaned = orphanedSets.length + orphanedCards.length;
+    if (cleaned > 0) {
+      window.CardedUtils.debugLog(`Cleaned ${cleaned} orphaned local records`);
+    }
   }
 
   async function reloadFromCacheAndRender() {
@@ -612,12 +665,19 @@
     renderHeaderActions();
     els.app.innerHTML = "";
 
+    // Offline indicator — top banner outside main content
+    const existingOfflineBanner = document.getElementById("offline-status-banner");
     if (!state.online) {
-      els.app.appendChild(createElement(`
-        <section class="banner offline-banner" aria-label="Offline status">
-          <p>Offline — changes will sync when you're back online</p>
-        </section>
-      `));
+      if (!existingOfflineBanner) {
+        const banner = document.createElement("div");
+        banner.id = "offline-status-banner";
+        banner.className = "offline-status-banner";
+        banner.setAttribute("role", "status");
+        banner.textContent = "You're offline — changes will sync when you reconnect";
+        els.appShell.insertBefore(banner, els.appShell.querySelector("main"));
+      }
+    } else if (existingOfflineBanner) {
+      existingOfflineBanner.remove();
     }
 
     switch (state.route.view) {
