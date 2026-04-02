@@ -53,7 +53,19 @@
   async function getSession() {
     const response = await window.supabaseClient.auth.getSession();
     if (response.error) throw response.error;
-    return response.data.session;
+    const session = response.data.session;
+    // If session token looks expired, attempt refresh
+    if (session && session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
+      const refreshResponse = await window.supabaseClient.auth.refreshSession().catch(function () {
+        return { data: { session: null }, error: new Error("Refresh failed") };
+      });
+      if (refreshResponse.data && refreshResponse.data.session) {
+        return refreshResponse.data.session;
+      }
+      // Refresh failed → treat as signed out
+      return null;
+    }
+    return session;
   }
 
   async function guardPage(options) {
