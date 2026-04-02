@@ -6,6 +6,7 @@
   const LAST_EXPORT_KEY = "carded.lastExportAt";
   const MIGRATION_DONE_KEY = "carded_v1_migration_done";
   const MIGRATION_SKIPPED_KEY = "carded_v1_migration_skipped";
+  const STUDY_SESSION_KEY = "carded_study_session";
   const MAX_NAME_LENGTH = 40;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -119,6 +120,18 @@
     window.addEventListener("carded:data-changed", reloadFromCacheAndRender);
     window.addEventListener("carded:connectivity", handleConnectivityChange);
     window.addEventListener("carded:auth-state", handleAuthEvent);
+
+    // Multi-tab consistency: broadcast local changes to other tabs
+    if (typeof BroadcastChannel !== "undefined") {
+      const bc = new BroadcastChannel("carded-data");
+      bc.onmessage = function () { reloadFromCacheAndRender(); };
+      window.addEventListener("carded:data-changed", function () {
+        bc.postMessage("changed");
+      });
+    } else {
+      // Fallback: re-fetch when tab regains focus
+      window.addEventListener("focus", reloadFromCacheAndRender);
+    }
     window.addEventListener("carded:sync-paused", function () {
       showToast("Sync paused — will retry automatically.");
     });
@@ -615,7 +628,14 @@
         initLearnSession(setId);
       } else {
         state.route = { view: "study", setId: setId };
-        initStudySession(setId);
+        const savedSession = loadSavedStudySession(setId);
+        if (savedSession && savedSession.currentIndex > 0) {
+          // Auto-resume — initStudySession handles it
+          initStudySession(setId, savedSession.shuffle, savedSession);
+          state.studySession.resumed = true;
+        } else {
+          initStudySession(setId);
+        }
       }
     } else if (path === window.BASE_PATH + "/library" && setId) {
       state.route = { view: "set", setId: setId };
@@ -925,14 +945,35 @@
   function renderStudyView(setId) {
     const set = getSet(setId);
     if (!set) {
-      navigateToLibrary(null, true);
+      // Set not found — show a message instead of silently redirecting
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>Set not found.</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.BASE_PATH}/library">Back to library</a>
+          </div>
+        </section>
+      `));
       return;
     }
 
     const session = state.studySession;
     if (!session) {
-      navigateToLibrary({ setId: setId }, true);
+      // No cards in set
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>No cards to study yet!</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>
+          </div>
+        </section>
+      `));
       return;
+    }
+
+    if (session.resumed) {
+      // Show a brief "resumed" indicator (clear after one render)
+      delete session.resumed;
     }
 
     if (session.complete) {
@@ -1413,6 +1454,9 @@
         const term = String(formData.get("term") || "").trim();
         const definition = String(formData.get("definition") || "").trim();
         if (!term || !definition) return;
+        if (term.length > 5000 || definition.length > 5000) {
+          showToast("Content is very long — consider shortening it for best results.");
+        }
         await addCard(setId, term, definition);
         form.reset();
         setDirty(false);
@@ -2077,23 +2121,71 @@
     URL.revokeObjectURL(url);
   }
 
-  function initStudySession(setId, shuffle = false) {
+  function saveStudySessionState() {
+    const s = state.studySession;
+    if (!s || s.complete) {
+      window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
+      return;
+    }
+    window.CardedUtils.safeSet(STUDY_SESSION_KEY, JSON.stringify({
+      setId: s.setId,
+      cardOrder: s.deck.map((c) => c.id),
+      currentIndex: s.index,
+      shuffle: s.shuffle,
+      direction: s.direction,
+      startedAt: s.startedAt || Date.now(),
+    }));
+  }
+
+  function loadSavedStudySession(setId) {
+    try {
+      const raw = window.CardedUtils.safeGet(STUDY_SESSION_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (saved.setId !== setId) return null;
+      // Validate: all saved card IDs still exist in this set
+      const currentCards = getCardsForSet(setId);
+      const currentIds = new Set(currentCards.map((c) => c.id));
+      if (!saved.cardOrder.every((id) => currentIds.has(id))) return null;
+      return saved;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function initStudySession(setId, shuffle = false, resumeData = null) {
     const cards = getCardsForSet(setId);
     if (!cards.length) {
       state.studySession = null;
       return;
     }
-    const deck = cards.slice();
-    if (shuffle) shuffleArray(deck);
+
+    let deck;
+    let index = 0;
+    let direction = "term-definition";
+    const cardMap = new Map(cards.map((c) => [c.id, c]));
+
+    if (resumeData) {
+      deck = resumeData.cardOrder.map((id) => cardMap.get(id)).filter(Boolean);
+      index = Math.min(resumeData.currentIndex, deck.length - 1);
+      direction = resumeData.direction || "term-definition";
+      shuffle = resumeData.shuffle || false;
+    } else {
+      deck = cards.slice();
+      if (shuffle) shuffleArray(deck);
+    }
+
     state.studySession = {
       setId,
       deck,
-      index: 0,
+      index,
       isFlipped: false,
       shuffle,
-      direction: "term-definition",
+      direction,
       complete: false,
+      startedAt: (resumeData && resumeData.startedAt) || Date.now(),
     };
+    saveStudySessionState();
   }
 
   async function advanceStudy(step) {
@@ -2102,6 +2194,7 @@
 
     if (step > 0 && session.index + 1 >= session.deck.length) {
       session.complete = true;
+      window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
       await recordStudyCompletion(session.setId, 100);
       render();
       return;
@@ -2109,6 +2202,7 @@
 
     session.index = Math.max(0, Math.min(session.deck.length - 1, session.index + step));
     session.isFlipped = false;
+    saveStudySessionState();
     render();
   }
 
