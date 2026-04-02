@@ -96,6 +96,18 @@
       .replace(/'/g, "&#39;");
   }
 
+  function withLoading(button, asyncFn) {
+    if (!button || button.disabled) return Promise.resolve();
+    button.disabled = true;
+    button.dataset.loading = "true";
+    return Promise.resolve()
+      .then(asyncFn)
+      .finally(function () {
+        button.disabled = false;
+        button.dataset.loading = "false";
+      });
+  }
+
   window.CardedUtils = {
     buildAppUrl,
     currentPath,
@@ -108,5 +120,6 @@
     safeGet,
     safeRemove,
     safeSet,
+    withLoading,
   };
 })();
