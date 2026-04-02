@@ -2,11 +2,16 @@
   "use strict";
 
   const SYNC_QUEUE_KEY = "carded_sync_queue";
+  const SESSION_EMAIL_KEY = "carded_user_email";
+  const SESSION_UID_KEY = "carded_user_id";
   const MAX_QUEUE_ENTRIES = 500;
-  const RETRY_LIMIT = 3;
+  const QUEUE_WARN_THRESHOLD = 450;
+  const RETRY_LIMIT = 5;
   const channels = [];
   let online = navigator.onLine;
   let activeUserId = null;
+  let consecutiveFailures = 0;
+  let backoffTimer = null;
 
   function dispatchConnectivity() {
     window.dispatchEvent(new CustomEvent("carded:connectivity", {
@@ -30,8 +35,22 @@
 
   function addToQueue(entry) {
     const queue = readQueue();
+    if (queue.length >= QUEUE_WARN_THRESHOLD) {
+      window.dispatchEvent(new CustomEvent("carded:sync-overflow"));
+    }
     queue.push(entry);
     writeQueue(queue);
+  }
+
+  function clearSessionCache() {
+    window.CardedUtils.safeRemove(SESSION_EMAIL_KEY);
+    window.CardedUtils.safeRemove(SESSION_UID_KEY);
+    window.CardedUtils.safeRemove(SYNC_QUEUE_KEY);
+  }
+
+  function cacheSession(userId, email) {
+    window.CardedUtils.safeSet(SESSION_UID_KEY, userId || "");
+    window.CardedUtils.safeSet(SESSION_EMAIL_KEY, email || "");
   }
 
   async function pingSupabase() {
@@ -173,8 +192,14 @@
     }
   }
 
+  function backoffDelay(attempt) {
+    // 1s, 2s, 4s, 8s, 16s, max 60s
+    return Math.min(1000 * Math.pow(2, attempt), 60000);
+  }
+
   async function flushQueue() {
     if (!activeUserId || !await refreshOnlineState()) return;
+    if (backoffTimer) return; // already scheduled
 
     const queue = readQueue();
     const remaining = [];
@@ -182,19 +207,57 @@
     for (const entry of queue) {
       try {
         await mutateRemote(entry.table, entry.operation, entry.payload);
+        consecutiveFailures = 0;
       } catch (error) {
-        console.error(error);
-        if ((entry.retries || 0) + 1 < RETRY_LIMIT) {
-          remaining.push({
-            ...entry,
-            retries: (entry.retries || 0) + 1,
-          });
+        // 401: try to refresh token first
+        if (error && (error.status === 401 || error.code === "PGRST301")) {
+          try {
+            await window.supabaseClient.auth.refreshSession();
+            await mutateRemote(entry.table, entry.operation, entry.payload);
+            consecutiveFailures = 0;
+            continue;
+          } catch (refreshError) {
+            console.error("Session refresh failed:", refreshError);
+            window.dispatchEvent(new CustomEvent("carded:session-expired"));
+            writeQueue([entry, ...remaining].concat(queue.slice(queue.indexOf(entry) + 1)));
+            return;
+          }
+        }
+
+        // 4xx (bad data) — skip, don't retry
+        if (error && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
+          console.error("Sync: skipping unrecoverable item", entry.table, error.status);
+          continue;
+        }
+
+        // Network errors, 5xx, 429 — retry with backoff
+        consecutiveFailures += 1;
+        const retries = (entry.retries || 0) + 1;
+        if (retries < RETRY_LIMIT) {
+          remaining.push({ ...entry, retries });
+        } else {
+          console.error("Sync: dropping item after max retries", entry.table);
+        }
+
+        if (consecutiveFailures >= 5) {
+          window.dispatchEvent(new CustomEvent("carded:sync-paused"));
+          writeQueue(remaining.concat(queue.slice(queue.indexOf(entry) + 1)));
+          const delay = backoffDelay(consecutiveFailures);
+          backoffTimer = setTimeout(function () {
+            backoffTimer = null;
+            consecutiveFailures = 0;
+            flushQueue();
+          }, delay);
+          return;
         }
       }
     }
 
     writeQueue(remaining);
-    await refetchLatest();
+    if (remaining.length === 0) {
+      consecutiveFailures = 0;
+      await refetchLatest();
+    }
   }
 
   async function refetchLatest() {
@@ -256,8 +319,9 @@
     }
   }
 
-  async function initSync(userId) {
+  async function initSync(userId, email) {
     activeUserId = userId;
+    cacheSession(userId, email);
     await refreshOnlineState();
 
     if (online) {
@@ -273,6 +337,12 @@
 
   window.addEventListener("online", function () {
     online = true;
+    // Reset backoff when connection returns
+    if (backoffTimer) {
+      clearTimeout(backoffTimer);
+      backoffTimer = null;
+    }
+    consecutiveFailures = 0;
     dispatchConnectivity();
     flushQueue();
   });
@@ -287,6 +357,8 @@
   });
 
   window.CardedSync = {
+    cacheSession,
+    clearSessionCache,
     flushQueue,
     initSync,
     isOnline: function () {

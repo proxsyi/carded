@@ -102,12 +102,17 @@
     return db.table(tableName).get(id);
   }
 
+  async function getAll(tableName) {
+    return db.table(tableName).toArray();
+  }
+
   window.CardedDB = {
     bulkPut,
     clearAllTables,
     db,
     deleteById,
     deleteWhere,
+    getAll,
     getAllUserData,
     getById,
     put,

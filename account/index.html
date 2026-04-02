@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Script order: config -> utils -> auth-guard -> auth -> supabase-db -->
+    <!-- Script order: config -> utils -> auth-guard -> db -> auth -> supabase-db -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carded — Account</title>
@@ -17,10 +17,12 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
     <meta name="referrer" content="no-referrer">
     <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
     <script src="/carded/config.js?v=3.0.0" defer></script>
     <script src="/carded/utils.js?v=3.0.0" defer></script>
     <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
+    <script src="/carded/db.js?v=3.0.0" defer></script>
     <script src="/carded/auth.js?v=3.0.0" defer></script>
     <script src="/carded/supabase-db.js?v=3.0.0" defer></script>
   </head>
@@ -191,9 +193,40 @@
           handlePasswordUpdate(event.currentTarget);
         });
 
+        async function clearLocalUserData(uid) {
+          if (window.CardedDB) {
+            try {
+              const tables = ["folders", "sets", "cards", "user_card_progress", "user_stats"];
+              for (const table of tables) {
+                await window.CardedDB.deleteWhere(table, function (row) {
+                  return row.user_id === uid;
+                }).catch(function () {});
+              }
+            } catch (_) {}
+          }
+          // Clear session cache and sync queue
+          ["carded_user_email", "carded_user_id", "carded_sync_queue", "carded_return_url"].forEach(function (key) {
+            window.CardedUtils.safeRemove(key);
+          });
+        }
+
         document.getElementById("signout-button").addEventListener("click", async function () {
+          const uid = session.user.id;
+          // Warn if there are unsynced changes
+          var rawQueue = window.CardedUtils.safeGet("carded_sync_queue");
+          var queue = [];
+          try { queue = rawQueue ? JSON.parse(rawQueue) : []; } catch (_) {}
+          if (queue.length > 0) {
+            var confirmed = window.confirm("You have " + queue.length + " unsynced change" + (queue.length !== 1 ? "s" : "") + ". They'll be lost if you sign out. Continue?");
+            if (!confirmed) return;
+          }
           try {
-            await window.CardedAuth.signOut();
+            await clearLocalUserData(uid);
+            await window.CardedAuth.signOut().catch(function () {
+              // If signOut fails (offline), manually clear auth token
+              var sbKey = "sb-" + window.SUPABASE_URL.match(/\/\/([^.]+)/)[1] + "-auth-token";
+              window.CardedUtils.safeRemove(sbKey);
+            });
             window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
           } catch (error) {
             window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
