@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carded — Privacy Policy</title>
-    <meta name="description" content="Carded privacy policy.">
+    <meta name="description" content="Carded privacy policy — what data we collect, how we store it, and your rights.">
     <meta name="theme-color" content="#1e1e2e">
     <meta name="color-scheme" content="dark">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,8 +20,48 @@
     <main class="legal-page" id="main">
       <p class="eyebrow">Carded</p>
       <h1>Privacy Policy</h1>
-      <p class="section-copy">Full privacy page lands in Phase 4. For now, return to the homepage.</p>
-      <a class="ghost-button" href="/carded">Back to Carded</a>
+      <p class="section-copy"><em>Last updated: March 2026</em></p>
+
+      <p>Carded ("the Service") respects your privacy. This policy explains what data we collect and how we use it.</p>
+
+      <h2>1. Data We Collect</h2>
+      <ul>
+        <li><strong>Account information:</strong> email address (required for sign-up). If you sign in with Google or GitHub, we receive your email and basic profile info (name, profile picture) from the OAuth provider.</li>
+        <li><strong>Flashcard content:</strong> folders, sets, cards (terms and definitions) that you create.</li>
+        <li><strong>Usage data:</strong> we do NOT collect analytics, tracking data, or usage statistics. We may collect basic error logs (error message, page URL, app version) tied to your account to maintain app stability. Error logs are deleted when you delete your account.</li>
+      </ul>
+
+      <h2>2. How We Store Data</h2>
+      <ul>
+        <li><strong>Cloud:</strong> your data is stored in a PostgreSQL database hosted by Supabase (AWS infrastructure, US region).</li>
+        <li><strong>Local:</strong> your data is also cached locally on your device using IndexedDB (via Dexie.js) for offline access.</li>
+        <li><strong>Authentication:</strong> handled by Supabase Auth. Passwords are hashed and never stored in plain text.</li>
+      </ul>
+
+      <h2>3. OAuth Scopes</h2>
+      <ul>
+        <li><strong>Google:</strong> email and basic profile (name, profile picture)</li>
+        <li><strong>GitHub:</strong> email address</li>
+      </ul>
+      <p>We only request the minimum scopes needed for authentication. We do not access your Google Drive, GitHub repos, or any other data.</p>
+
+      <h2>4. Data Sharing</h2>
+      <p>We do NOT share your data with any third parties. We do NOT sell your data. We do NOT use your data for advertising.</p>
+
+      <h2>5. Data Retention &amp; Deletion</h2>
+      <p>Your data is retained as long as your account exists. You can delete your account and ALL associated data (folders, sets, cards, progress) at any time from the account settings page. Alternatively, email <a href="mailto:cashmouzon@gmail.com" rel="noopener noreferrer">cashmouzon@gmail.com</a> to request deletion.</p>
+
+      <h2>6. Cookies &amp; Local Storage</h2>
+      <p>Carded uses <code>localStorage</code> for session management and sync queue state. No third-party cookies or tracking cookies are used.</p>
+
+      <h2>7. Changes</h2>
+      <p>We may update this privacy policy at any time. Check this page for the latest version.</p>
+
+      <p><strong>Contact:</strong> <a href="mailto:cashmouzon@gmail.com" rel="noopener noreferrer">cashmouzon@gmail.com</a></p>
+
+      <div class="landing-footer">
+        <a class="ghost-button" href="/carded">← Back to Carded</a>
+      </div>
     </main>
   </body>
 </html>
