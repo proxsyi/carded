@@ -1,16 +1,148 @@
 :root {
+  /* Backgrounds */
   --bg-primary: #1e1e2e;
   --bg-secondary: #26263a;
   --bg-tertiary: #31324a;
+  --bg-topbar: #17171b;
+  --bg-auth: rgba(28, 28, 33, 0.94);
+  --bg-toast: rgba(28, 28, 33, 0.96);
+  --bg-overlay: rgba(8, 8, 11, 0.72);
+
+  /* Borders */
   --border: #333340;
+  --border-topbar: rgba(51, 51, 64, 0.72);
+
+  /* Text */
   --text-primary: #e8e8ed;
   --text-secondary: #9494a3;
+  --text-tertiary: rgba(148, 148, 163, 0.5);
+
+  /* Accent */
   --accent: #9580ff;
   --accent-hover: #b0a0ff;
+  --accent-active: #7c6de0;
+  --accent-subtle: rgba(149, 128, 255, 0.08);
+  --accent-glow: rgba(149, 128, 255, 0.12);
+  --accent-border: rgba(149, 128, 255, 0.26);
+  --accent-border-mid: rgba(149, 128, 255, 0.24);
+  --accent-ring: rgba(149, 128, 255, 0.35);
+  --accent-ring-mid: rgba(149, 128, 255, 0.25);
+  --accent-brand-from: rgba(149, 128, 255, 0.18);
+  --accent-brand-to: rgba(149, 128, 255, 0.04);
+  --accent-active-bg: rgba(149, 128, 255, 0.18);
+  --accent-active-border: rgba(149, 128, 255, 0.4);
+
+  /* Button */
+  --button-text: #121219;
+  --focus-ring: #7c3aed;
+
+  /* States */
   --correct: #4ade80;
   --incorrect: #f87171;
-  --folder-accent: #9580ff33;
+  --correct-bg: rgba(74, 222, 128, 0.14);
+  --correct-border: rgba(74, 222, 128, 0.5);
+  --incorrect-bg: rgba(248, 113, 113, 0.14);
+  --incorrect-border: rgba(248, 113, 113, 0.5);
+  --error-text: #ffb4b4;
+
+  /* Danger */
+  --danger-bg: rgba(248, 113, 113, 0.12);
+  --danger-border: rgba(248, 113, 113, 0.32);
+  --danger-text: #ffd5d5;
+  --danger-hover: rgba(248, 113, 113, 0.2);
+
+  /* Warning */
+  --warning-bg: rgba(234, 179, 8, 0.12);
+  --warning-border: rgba(234, 179, 8, 0.3);
+  --warning-text: #fde68a;
+
+  /* Error overlay (fixed error bar) */
+  --error-overlay-bg: rgba(127, 29, 29, 0.95);
+  --error-overlay-border: rgba(248, 113, 113, 0.4);
+
+  /* Shadow */
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+  --shadow-hover: 0 28px 70px rgba(0, 0, 0, 0.36);
+
+  /* Surface overlays */
+  --surface-1: rgba(255, 255, 255, 0.02);
+  --surface-2: rgba(255, 255, 255, 0.03);
+  --surface-3: rgba(255, 255, 255, 0.04);
+  --surface-4: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.15);
+
+  /* Legacy alias */
+  --folder-accent: rgba(149, 128, 255, 0.2);
+
+  color-scheme: dark;
+}
+
+/* ── Light theme (TN Trooper Orange) ─────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-primary: #F5F0E8;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EDE8DD;
+  --bg-topbar: #F0EBE0;
+  --bg-auth: rgba(255, 255, 255, 0.98);
+  --bg-toast: rgba(255, 255, 255, 0.98);
+  --bg-overlay: rgba(44, 24, 16, 0.6);
+
+  --border: #D4C9BB;
+  --border-topbar: rgba(212, 201, 187, 0.72);
+
+  --text-primary: #2C1810;
+  --text-secondary: #5C4A3A;
+  --text-tertiary: rgba(92, 74, 58, 0.5);
+
+  --accent: #C4742C;
+  --accent-hover: #A8612A;
+  --accent-active: #8C5024;
+  --accent-subtle: rgba(196, 116, 44, 0.08);
+  --accent-glow: rgba(196, 116, 44, 0.10);
+  --accent-border: rgba(196, 116, 44, 0.30);
+  --accent-border-mid: rgba(196, 116, 44, 0.24);
+  --accent-ring: rgba(196, 116, 44, 0.35);
+  --accent-ring-mid: rgba(196, 116, 44, 0.25);
+  --accent-brand-from: rgba(196, 116, 44, 0.18);
+  --accent-brand-to: rgba(196, 116, 44, 0.04);
+  --accent-active-bg: rgba(196, 116, 44, 0.14);
+  --accent-active-border: rgba(196, 116, 44, 0.35);
+
+  --button-text: #FFFFFF;
+  --focus-ring: #C4742C;
+
+  --correct: #16a34a;
+  --incorrect: #dc2626;
+  --correct-bg: rgba(22, 163, 74, 0.12);
+  --correct-border: rgba(22, 163, 74, 0.4);
+  --incorrect-bg: rgba(220, 38, 38, 0.10);
+  --incorrect-border: rgba(220, 38, 38, 0.35);
+  --error-text: #b91c1c;
+
+  --danger-bg: rgba(220, 38, 38, 0.08);
+  --danger-border: rgba(220, 38, 38, 0.28);
+  --danger-text: #991b1b;
+  --danger-hover: rgba(220, 38, 38, 0.14);
+
+  --warning-bg: rgba(180, 130, 0, 0.10);
+  --warning-border: rgba(180, 130, 0, 0.30);
+  --warning-text: #92400e;
+
+  --error-overlay-bg: rgba(255, 240, 240, 0.98);
+  --error-overlay-border: rgba(220, 38, 38, 0.4);
+
+  --shadow: 0 20px 60px rgba(44, 24, 16, 0.12);
+  --shadow-hover: 0 28px 70px rgba(44, 24, 16, 0.18);
+
+  --surface-1: rgba(0, 0, 0, 0.02);
+  --surface-2: rgba(0, 0, 0, 0.03);
+  --surface-3: rgba(0, 0, 0, 0.04);
+  --surface-4: rgba(0, 0, 0, 0.05);
+  --surface-hover: rgba(0, 0, 0, 0.08);
+
+  --folder-accent: rgba(196, 116, 44, 0.2);
+
+  color-scheme: light;
 }
 
 *,
@@ -55,17 +187,13 @@ label,
   touch-action: manipulation;
 }
 
-html {
-  color-scheme: dark;
-}
-
 body {
   margin: 0;
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at top left, rgba(149, 128, 255, 0.12), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
+    radial-gradient(circle at top left, var(--accent-glow), transparent 28%),
+    linear-gradient(180deg, var(--surface-1), transparent 24%),
     var(--bg-primary);
   color: var(--text-primary);
   font: 16px/1.5 "Inter", system-ui, -apple-system, sans-serif;
@@ -109,9 +237,9 @@ body {
   inset: auto 16px 16px 16px;
   z-index: 100;
   padding: 14px 16px;
-  border: 1px solid rgba(248, 113, 113, 0.4);
+  border: 1px solid var(--error-overlay-border);
   border-radius: 12px;
-  background: rgba(127, 29, 29, 0.95);
+  background: var(--error-overlay-bg);
 }
 
 button,
@@ -138,7 +266,7 @@ select:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible,
 .inline-editable[contenteditable="true"]:focus-visible {
-  outline: 2px solid #7c3aed;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -176,8 +304,8 @@ select:focus-visible,
   justify-content: space-between;
   gap: 16px;
   padding: 18px 24px;
-  background: #17171b;
-  border-bottom: 1px solid rgba(51, 51, 64, 0.72);
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-topbar);
 }
 
 .brand-link {
@@ -195,8 +323,8 @@ select:focus-visible,
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(149, 128, 255, 0.18), rgba(149, 128, 255, 0.04));
-  border: 1px solid rgba(149, 128, 255, 0.35);
+  background: linear-gradient(180deg, var(--accent-brand-from), var(--accent-brand-to));
+  border: 1px solid var(--accent-ring);
 }
 
 .topbar__actions {
@@ -233,9 +361,9 @@ select:focus-visible,
   gap: 16px;
   margin-bottom: 24px;
   padding: 14px 16px;
-  border: 1px solid rgba(149, 128, 255, 0.26);
+  border: 1px solid var(--accent-border);
   border-radius: 12px;
-  background: rgba(149, 128, 255, 0.08);
+  background: var(--accent-subtle);
 }
 
 .banner p {
@@ -249,9 +377,9 @@ select:focus-visible,
 
 .offline-status-banner {
   padding: 10px 24px;
-  background: rgba(234, 179, 8, 0.12);
-  border-bottom: 1px solid rgba(234, 179, 8, 0.3);
-  color: #fde68a;
+  background: var(--warning-bg);
+  border-bottom: 1px solid var(--warning-border);
+  color: var(--warning-text);
   font-size: 0.9rem;
   text-align: center;
 }
@@ -328,7 +456,7 @@ select:focus-visible,
 
 .button {
   background: var(--accent);
-  color: #121219;
+  color: var(--button-text);
   font-weight: 700;
 }
 
@@ -351,18 +479,18 @@ select:focus-visible,
 }
 
 .danger-button {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.32);
-  color: #ffd5d5;
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
 }
 
 .danger-button:hover {
-  background: rgba(248, 113, 113, 0.2);
+  background: var(--danger-hover);
 }
 
 .pill-button.active {
-  background: rgba(149, 128, 255, 0.18);
-  border-color: rgba(149, 128, 255, 0.4);
+  background: var(--accent-active-bg);
+  border-color: var(--accent-active-border);
   color: var(--accent-hover);
 }
 
@@ -441,15 +569,15 @@ select:focus-visible,
 
 .tile:hover {
   transform: translateY(-4px);
-  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.36);
+  box-shadow: var(--shadow-hover);
   background-color: var(--bg-tertiary);
 }
 
 .tile.folder {
   background:
-    linear-gradient(180deg, rgba(149, 128, 255, 0.12), transparent 42%),
+    linear-gradient(180deg, var(--accent-glow), transparent 42%),
     var(--bg-secondary);
-  border-color: rgba(149, 128, 255, 0.24);
+  border-color: var(--accent-border-mid);
 }
 
 .tile.dragging,
@@ -460,7 +588,7 @@ select:focus-visible,
 .tile.drop-target,
 .standalone-dropzone.drop-target {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(149, 128, 255, 0.18);
+  box-shadow: 0 0 0 2px var(--accent-active-bg);
 }
 
 .tile__header,
@@ -490,7 +618,7 @@ select:focus-visible,
 }
 
 .inline-editable:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
 }
 
 .inline-editable[contenteditable="true"] {
@@ -498,7 +626,7 @@ select:focus-visible,
   overflow: visible;
   text-overflow: clip;
   background: var(--bg-tertiary);
-  border: 1px solid rgba(149, 128, 255, 0.25);
+  border: 1px solid var(--accent-ring-mid);
 }
 
 .tile__name {
@@ -514,7 +642,7 @@ select:focus-visible,
   height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-3);
   color: var(--text-secondary);
   font-size: 0.88rem;
 }
@@ -559,8 +687,8 @@ select:focus-visible,
 
 .landing-grid .panel:hover {
   transform: translateY(-4px);
-  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.36);
-  background-color: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-hover);
+  background-color: var(--surface-4);
 }
 
 .empty-state {
@@ -623,8 +751,8 @@ select:focus-visible,
   min-height: 52px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--surface-1);
+  border: 1px solid var(--surface-3);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -648,7 +776,7 @@ select:focus-visible,
   border: 1px dashed var(--border);
   border-radius: 12px;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-1);
 }
 
 .session-shell {
@@ -666,7 +794,7 @@ select:focus-visible,
 .progress {
   width: min(680px, 100%);
   height: 10px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-4);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -710,7 +838,7 @@ select:focus-visible,
 
 .flip-face.back {
   transform: rotateY(180deg);
-  background: linear-gradient(180deg, rgba(149, 128, 255, 0.08), transparent 50%);
+  background: linear-gradient(180deg, var(--accent-subtle), transparent 50%);
 }
 
 .flip-label,
@@ -756,13 +884,13 @@ select:focus-visible,
 }
 
 .choice-button.correct {
-  background: rgba(74, 222, 128, 0.14);
-  border-color: rgba(74, 222, 128, 0.5);
+  background: var(--correct-bg);
+  border-color: var(--correct-border);
 }
 
 .choice-button.incorrect {
-  background: rgba(248, 113, 113, 0.14);
-  border-color: rgba(248, 113, 113, 0.5);
+  background: var(--incorrect-bg);
+  border-color: var(--incorrect-border);
 }
 
 .feedback {
@@ -780,12 +908,12 @@ select:focus-visible,
 }
 
 @keyframes flash-correct {
-  0% { background-color: rgba(74, 222, 128, 0.16); }
+  0% { background-color: var(--correct-bg); }
   100% { background-color: transparent; }
 }
 
 @keyframes flash-incorrect {
-  0% { background-color: rgba(248, 113, 113, 0.16); }
+  0% { background-color: var(--incorrect-bg); }
   100% { background-color: transparent; }
 }
 
@@ -805,7 +933,7 @@ select:focus-visible,
   max-width: min(92vw, 560px);
   padding: 14px 16px;
   border-radius: 12px;
-  background: rgba(28, 28, 33, 0.96);
+  background: var(--bg-toast);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   animation: toast-in 0.18s ease;
@@ -849,7 +977,7 @@ select:focus-visible,
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(8, 8, 11, 0.72);
+  background: var(--bg-overlay);
 }
 
 .modal {
@@ -919,7 +1047,7 @@ select:focus-visible,
   padding: 32px;
   border-radius: 16px;
   border: 1px solid var(--border);
-  background: rgba(28, 28, 33, 0.94);
+  background: var(--bg-auth);
   box-shadow: var(--shadow);
 }
 
@@ -953,7 +1081,7 @@ select:focus-visible,
 .auth-divider span {
   position: relative;
   padding: 0 12px;
-  background: rgba(28, 28, 33, 0.94);
+  background: var(--bg-auth);
 }
 
 .auth-button {
@@ -1004,9 +1132,9 @@ select:focus-visible,
   width: min(1120px, calc(100% - 48px));
   margin: 16px auto 0;
   padding: 14px 16px;
-  border: 1px solid rgba(149, 128, 255, 0.26);
+  border: 1px solid var(--accent-border);
   border-radius: 12px;
-  background: rgba(149, 128, 255, 0.08);
+  background: var(--accent-subtle);
 }
 
 .install-banner p {
@@ -1025,7 +1153,7 @@ select:focus-visible,
   width: 40px;
   height: 40px;
   border-radius: 999px;
-  border: 3px solid rgba(255, 255, 255, 0.15);
+  border: 3px solid var(--surface-hover);
   border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
@@ -1057,13 +1185,13 @@ select:focus-visible,
 
 .inline-error {
   margin: 0;
-  color: #ffb4b4;
+  color: var(--error-text);
   font-size: 0.88rem;
 }
 
 .skeleton {
   border-radius: 12px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(90deg, var(--surface-3), var(--surface-hover), var(--surface-3));
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.2s ease-in-out infinite;
 }
@@ -1189,7 +1317,7 @@ select:focus-visible,
   z-index: 9999;
   padding: 8px 16px;
   background: var(--accent);
-  color: #121219;
+  color: var(--button-text);
   font-weight: 700;
   border-radius: 8px;
   text-decoration: none;
@@ -1218,7 +1346,7 @@ select:focus-visible,
 /* Inline form error */
 .field-error {
   margin: 0;
-  color: #ffb4b4;
+  color: var(--error-text);
   font-size: 0.88rem;
 }
 

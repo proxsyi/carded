@@ -47,6 +47,11 @@
       window.location.replace(window.location.origin + returnTo);
       return;
     }
+    const onboardingDone = window.CardedUtils.safeGet("carded_onboarding_complete");
+    if (!onboardingDone) {
+      window.CardedUtils.redirectTo(window.BASE_PATH + "/setup", null, true);
+      return;
+    }
     window.CardedUtils.redirectTo(window.BASE_PATH + "/library", null, true);
   }
 

@@ -729,13 +729,26 @@
   }
 
   function renderHeaderActions() {
+    const themeEff = window.CardedTheme ? window.CardedTheme.effectiveTheme(window.CardedTheme.getStoredTheme()) : "dark";
     els.headerActions.innerHTML = `
       <button class="ghost-button" data-action="create-folder">New folder</button>
       <button class="button" data-action="create-set">New set</button>
+      <button class="icon-button" data-theme-toggle aria-label="${themeEff === "dark" ? "Switch to light theme" : "Switch to dark theme"}">
+        <span class="theme-icon-moon" aria-hidden="true" ${themeEff !== "dark" ? 'style="display:none"' : ""}>🌙</span>
+        <span class="theme-icon-sun" aria-hidden="true" ${themeEff === "dark" ? 'style="display:none"' : ""}>☀️</span>
+      </button>
       <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
         <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
       </a>
     `;
+    // Wire theme toggle
+    const toggleBtn = els.headerActions.querySelector("[data-theme-toggle]");
+    if (toggleBtn && window.CardedTheme) {
+      toggleBtn.addEventListener("click", function () {
+        window.CardedTheme.cycleTheme();
+        renderHeaderActions();
+      });
+    }
   }
 
   function renderHomeView() {
