@@ -738,7 +738,7 @@
         <span class="theme-icon-sun" aria-hidden="true" ${themeEff === "dark" ? 'style="display:none"' : ""}>☀️</span>
       </button>
       <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
-        <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
+        <span class="account-link__avatar" aria-hidden="true">${escapeHtml((window.CardedUtils.safeGet("carded_display_name") || state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
       </a>
     `;
     // Wire theme toggle

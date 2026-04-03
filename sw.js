@@ -31,6 +31,8 @@ const APP_SHELL_ASSETS = [
   "./assets/apple-touch-icon.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1",
   "https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js",
+  "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
+  "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css",
 ];
 
 function isSupabaseRequest(url) {
