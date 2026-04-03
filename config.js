@@ -2,7 +2,7 @@
   "use strict";
 
   const BASE_PATH = "/carded";
-  const APP_VERSION = "3.0.0";
+  const APP_VERSION = "4.0.0";
   const DEBUG = false;
   const SUPABASE_URL = "https://uctnhfasholeuyxqulmd.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_TZwBeTxXXq2oAQac2LpJBQ_sYisHZWU";

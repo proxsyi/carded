@@ -1,54 +1,52 @@
 # Carded
 
-Carded is a self-hosted flashcard PWA for fast study with offline cache and Supabase-backed sync. Zero build step, static-host friendly.
+Free, offline-first flashcard app with cloud sync, smart study tracking, and zero clutter.
 
-**Features (v3)**
+---
 
-- Clean URLs (`/carded/login`, `/carded/library`, `/carded/study`, `/carded/account`)
-- Folder and set organization with standalone decks
-- Email/password auth plus Google and GitHub OAuth
-- Supabase cloud sync with local Dexie (IndexedDB) cache
-- Offline-first — create and edit cards while disconnected, sync queue flushes on reconnect
-- Sync retry with exponential backoff; session-expiry redirect handling
-- Flip-card study mode with keyboard shortcuts and auto-resume across sessions
-- Multiple-choice learn mode with per-card progress tracking
-- Custom modals (no browser `prompt()`) with full keyboard/a11y support
-- Import/export for plain-text card sets (`Term, Definition` per line)
-- v1 local-data migration prompt on first sign-in
-- Installable PWA with dark splash screen; install prompt on repeat visits
-- Skip-to-main link, focus traps, print stylesheet
-- Terms of Service and Privacy Policy pages
+## Using Carded
 
-**Run locally**
+### Web app
 
+Go to **[proxsyi.github.io/carded](https://proxsyi.github.io/carded)**, create an account (or use without one), and start creating flashcard sets.
+
+### Install as an offline app (PWA)
+
+Carded works without an internet connection and can be installed as a standalone app:
+
+- **Chrome / Edge**: click the install icon in the address bar, then click **Install**
+- **iOS Safari**: tap **Share** → **Add to Home Screen**
+- **Android Chrome**: tap the menu (⋮) → **Install app**
+
+Once installed, Carded opens like a native app and works fully offline.
+
+### Run locally
+
+Clone the repo and open it with any static file server:
+
+```bash
+git clone https://github.com/proxsyi/carded.git
+cd carded
+python3 -m http.server 8080
+# Open: http://localhost:8080/carded/
 ```
-python3 -m http.server 8000
-```
 
-Open `http://localhost:8000/carded/` — serving over HTTP is required for the service worker and OAuth redirects.
+No build step. No dependencies to install. Edit files and refresh.
 
-**Production**
+---
 
-https://proxsyi.github.io/carded/
+## How it works
 
-**Supabase setup**
+**Stack**: Vanilla HTML, CSS, and JavaScript — no frameworks, no bundler, no transpilation.
 
-Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `config.js`. Dashboard settings needed:
+**Storage**: IndexedDB via [Dexie.js](https://dexie.org/) for local-first offline storage + [Supabase](https://supabase.com/) PostgreSQL for cloud sync. All data is written locally first; sync happens in the background.
 
-- Site URL: `https://proxsyi.github.io/carded/`
-- Redirect URLs: `https://proxsyi.github.io/carded/**`
-- RLS enabled on `folders`, `sets`, `cards`, `user_card_progress`, `user_stats`
-- `delete_user()` RPC function (transaction that deletes all user rows + auth user)
+**Auth**: Supabase Auth with email/password, Google OAuth, and GitHub OAuth. Local (no-account) mode is also supported.
 
-**Install as PWA**
+**Hosting**: GitHub Pages — push to `main` and it deploys automatically.
 
-- iOS: Safari → Share → Add to Home Screen
-- Android: Chrome → three-dot menu → Install app
-- Desktop: Chrome/Edge → install icon in address bar
+**PWA**: Service worker caches all static assets for offline access. Web app manifest enables installability.
 
-**Tech stack**
+**Study system**: Point-based familiarity tracking. Cards you miss accumulate points and appear more frequently. Cards you answer correctly lose points. Reaching 0 points means mastered.
 
-- Vanilla HTML, CSS, ES6 JavaScript (IIFE modules, no bundler)
-- Dexie.js 4.4.2 (IndexedDB) + Supabase JS 2.101.1 (Auth / Postgres / Realtime) via CDN with SRI hashes
-- GitHub Pages static hosting
-- PWA: service worker (cache-first, cache name versioned), Web App Manifest
+**Sync**: Local-first with background cloud sync. Mutations are written to IndexedDB immediately, queued, and flushed to Supabase when online. Supabase Realtime broadcasts changes across tabs and devices.
