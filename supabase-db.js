@@ -82,6 +82,10 @@
     return requireSupabase().from("user_stats");
   }
 
+  function profilesTable() {
+    return requireSupabase().from("user_profiles");
+  }
+
   async function getFolders(userId) {
     return unwrap(
       () => foldersTable()
@@ -274,6 +278,24 @@
     );
   }
 
+  async function getProfile(userId) {
+    const { data, error } = await profilesTable()
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  async function upsertProfile(userId, updates) {
+    return unwrap(
+      () => profilesTable()
+        .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" })
+        .select()
+        .single()
+    );
+  }
+
   async function fetchAllUserData(userId) {
     const [folders, sets, progress, stats] = await Promise.all([
       getFolders(userId),
@@ -306,6 +328,7 @@
     getCards,
     getFolders,
     getOrCreateStats,
+    getProfile,
     getProgress,
     getSets,
     getSetsByFolder,
@@ -313,6 +336,7 @@
     updateFolder,
     updateSet,
     updateStats,
+    upsertProfile,
     upsertProgress,
   };
 })();

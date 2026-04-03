@@ -30,6 +30,18 @@
     return Promise.resolve();
   });
 
+  // v3: add local_kv for device-local key-value storage (e.g. custom profile pictures).
+  db.version(3).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+    local_kv: "key",
+  }).upgrade(function (tx) {
+    return Promise.resolve();
+  });
+
   async function clearAllTables() {
     await db.transaction("rw", db.tables, async function () {
       await Promise.all(db.tables.map(function (table) {
@@ -133,6 +145,19 @@
     return db.table(tableName).toArray();
   }
 
+  async function kvGet(key) {
+    const row = await db.local_kv.get(key);
+    return row ? row.value : null;
+  }
+
+  async function kvSet(key, value) {
+    await db.local_kv.put({ key, value });
+  }
+
+  async function kvDelete(key) {
+    await db.local_kv.delete(key);
+  }
+
   window.CardedDB = {
     bulkPut,
     clearAllTables,
@@ -142,6 +167,9 @@
     getAll,
     getAllUserData,
     getById,
+    kvDelete,
+    kvGet,
+    kvSet,
     put,
     replaceAllData,
   };

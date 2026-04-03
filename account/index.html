@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Script order: config -> utils -> auth-guard -> db -> auth -> supabase-db -->
+    <!-- Script order: config -> utils -> auth-guard -> components -> db -> auth -> supabase-db -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carded — Account</title>
-    <meta name="description" content="Manage your Carded account, password, and study stats.">
+    <title>Carded — Settings</title>
+    <meta name="description" content="Manage your Carded account, preferences, and data.">
     <meta name="theme-color" content="#1e1e2e">
     <meta name="color-scheme" content="dark">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,12 +14,15 @@
     <link rel="icon" href="/carded/assets/favicon.png">
     <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
     <link rel="manifest" href="/carded/manifest.webmanifest">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
     <meta name="referrer" content="no-referrer">
     <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
+    <!-- Cropper.js for custom profile picture cropping -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" crossorigin="anonymous">
+    <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
-    <script src="/carded/theme.js?v=4.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" crossorigin="anonymous" defer></script>
     <script src="/carded/config.js?v=4.0.0" defer></script>
     <script src="/carded/utils.js?v=4.0.0" defer></script>
     <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
@@ -33,84 +36,224 @@
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
     <main class="auth-shell" id="main">
       <section class="auth-card account-card">
-        <div class="auth-header-row">
-          <div>
-            <a href="/carded/library" class="eyebrow" style="text-decoration:none">Carded</a>
-            <h1>Account</h1>
-          </div>
-          <a class="ghost-button" href="/carded/library">Back to library</a>
-        </div>
 
-        <section id="account-view" class="stack hidden">
-          <div class="panel account-summary">
-            <div class="field">
-              <span class="meta-label">Email</span>
-              <strong id="account-email">-</strong>
-            </div>
-            <div class="field">
-              <span class="meta-label">Provider</span>
-              <strong id="account-provider">-</strong>
-            </div>
-            <div class="field">
-              <span class="meta-label">Account created</span>
-              <strong id="account-created">-</strong>
-            </div>
-          </div>
-
-          <section class="stack">
-            <div class="section-header">
-              <div class="stack">
-                <h2 class="section-title">Usage stats</h2>
-              </div>
-            </div>
-            <div class="summary-grid">
-              <div class="stat-card"><div class="meta-label">Study time</div><div id="stats-time" class="stat-value">0m</div></div>
-              <div class="stat-card"><div class="meta-label">Cards reviewed</div><div id="stats-reviewed" class="stat-value">0</div></div>
-              <div class="stat-card"><div class="meta-label">Sessions</div><div id="stats-sessions" class="stat-value">0</div></div>
-              <div class="stat-card"><div class="meta-label">Current streak</div><div id="stats-current-streak" class="stat-value">0</div></div>
-              <div class="stat-card"><div class="meta-label">Longest streak</div><div id="stats-longest-streak" class="stat-value">0</div></div>
-            </div>
-          </section>
-
-          <form id="password-form" class="stack panel">
-            <h2>Change password</h2>
-            <div class="field">
-              <label for="new-password">New password</label>
-              <input id="new-password" name="newPassword" class="input" type="password" minlength="6" required>
-            </div>
-            <div class="field">
-              <label for="confirm-password">Confirm password</label>
-              <input id="confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
-            </div>
-            <button class="button" type="submit">Update password</button>
-          </form>
-
-          <div class="account-actions">
-            <button id="signout-button" class="ghost-button" type="button">Sign out</button>
-            <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
-          </div>
-          <p class="meta-copy" style="text-align:center;margin-top:8px">v<span id="app-version">3.0.0</span></p>
-        </section>
-
+        <!-- ── Recovery mode (password reset via email link) ─────────────────── -->
         <section id="recovery-view" class="stack hidden">
           <p class="eyebrow">Password recovery</p>
           <h1>Set a new password</h1>
           <form id="recovery-form" class="stack panel">
             <div class="field">
               <label for="recovery-password">New password</label>
-              <input id="recovery-password" name="newPassword" class="input" type="password" minlength="6" required>
+              <div class="password-field">
+                <input id="recovery-password" name="newPassword" class="input" type="password" minlength="6" required>
+                <button class="ghost-button password-toggle" data-toggle-password="recovery-password" type="button">Show</button>
+              </div>
             </div>
             <div class="field">
               <label for="recovery-confirm-password">Confirm password</label>
-              <input id="recovery-confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+              <div class="password-field">
+                <input id="recovery-confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+                <button class="ghost-button password-toggle" data-toggle-password="recovery-confirm-password" type="button">Show</button>
+              </div>
             </div>
             <button class="button" type="submit">Set new password</button>
           </form>
         </section>
+
+        <!-- ── Main settings view ─────────────────────────────────────────────── -->
+        <section id="settings-view" class="hidden">
+          <div class="auth-header-row" style="margin-bottom:24px">
+            <div>
+              <a href="/carded/library" class="eyebrow" style="text-decoration:none">Carded</a>
+              <h1 style="margin:0">Settings</h1>
+            </div>
+            <a class="ghost-button" href="/carded/library">← Library</a>
+          </div>
+
+          <!-- Tabs -->
+          <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button class="settings-tab" role="tab" aria-selected="true" data-tab="profile" type="button">Profile</button>
+            <button class="settings-tab" role="tab" aria-selected="false" data-tab="preferences" type="button">Preferences</button>
+            <button class="settings-tab" role="tab" aria-selected="false" data-tab="data" type="button">Data</button>
+          </nav>
+
+          <!-- ── Profile tab ─────────────────────────────────────────────────── -->
+          <div id="tab-profile" role="tabpanel" class="stack" data-panel="profile">
+
+            <!-- Profile picture + display name -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 16px">Profile</h2>
+              <div class="profile-pic-section">
+                <div id="profile-pic-display" class="profile-pic-lg" aria-label="Profile picture">
+                  <span id="profile-initial">?</span>
+                  <img id="profile-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%">
+                </div>
+                <div class="profile-pic-controls">
+                  <div class="profile-pic-opts">
+                    <button class="ghost-button" data-pfp="initial" type="button" aria-pressed="true">Initial</button>
+                    <button class="ghost-button" data-pfp="provider" type="button" aria-pressed="false">Provider photo</button>
+                    <button class="ghost-button" data-pfp="custom" type="button" aria-pressed="false">Upload photo</button>
+                  </div>
+                  <p class="meta-copy" style="margin:0">Uploaded photos are stored on this device only.</p>
+                  <input id="pfp-file-input" type="file" accept=".jpg,.jpeg,.png,.gif,.webp" style="display:none" aria-label="Upload profile photo">
+                </div>
+              </div>
+            </div>
+
+            <!-- Display name -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 12px">Display name</h2>
+              <div class="field">
+                <label for="display-name">Name</label>
+                <input id="display-name" class="input" type="text" maxlength="30" autocomplete="name" placeholder="Your name">
+                <span class="char-counter" id="display-name-counter" aria-live="polite">0 / 30</span>
+              </div>
+              <button id="save-display-name" class="button" type="button" style="align-self:flex-start">Save name</button>
+            </div>
+
+            <!-- Sign-in info + account linking -->
+            <div class="panel stack" id="auth-info-panel">
+              <h2 style="margin:0 0 12px">Sign-in methods</h2>
+              <div id="auth-provider-list" class="stack">
+                <p class="meta-copy">Loading…</p>
+              </div>
+            </div>
+
+            <!-- Change password (email users only) -->
+            <form id="password-form" class="panel stack hidden">
+              <h2 style="margin:0 0 12px">Change password</h2>
+              <div class="field">
+                <label for="new-password">New password</label>
+                <div class="password-field">
+                  <input id="new-password" name="newPassword" class="input" type="password" minlength="6" required>
+                  <button class="ghost-button password-toggle" data-toggle-password="new-password" type="button">Show</button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="confirm-password">Confirm password</label>
+                <div class="password-field">
+                  <input id="confirm-password" name="confirmPassword" class="input" type="password" minlength="6" required>
+                  <button class="ghost-button password-toggle" data-toggle-password="confirm-password" type="button">Show</button>
+                </div>
+              </div>
+              <button class="button" type="submit" style="align-self:flex-start">Update password</button>
+            </form>
+
+          </div><!-- /tab-profile -->
+
+          <!-- ── Preferences tab ────────────────────────────────────────────── -->
+          <div id="tab-preferences" role="tabpanel" class="stack hidden" data-panel="preferences">
+
+            <!-- Theme selection -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 4px">Theme</h2>
+              <p class="meta-copy" style="margin:0 0 4px">Choose how Carded looks.</p>
+              <div class="theme-options" role="group" aria-label="Theme selection">
+                <button class="theme-option" data-theme-choice="dark" type="button" aria-pressed="false">
+                  <span class="theme-option__icon">🌙</span>
+                  <div>
+                    <div class="theme-option__label">Dark</div>
+                  </div>
+                </button>
+                <button class="theme-option" data-theme-choice="light" type="button" aria-pressed="false">
+                  <span class="theme-option__icon">☀️</span>
+                  <div>
+                    <div class="theme-option__label">Light</div>
+                  </div>
+                </button>
+                <button class="theme-option" data-theme-choice="auto" type="button" aria-pressed="false">
+                  <span class="theme-option__icon">🔄</span>
+                  <div>
+                    <div class="theme-option__label">Auto</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Keyboard shortcuts -->
+            <div class="panel">
+              <h2 style="margin:0 0 16px">Keyboard shortcuts</h2>
+              <table class="shortcut-table">
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Key</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="2" style="color:var(--text-secondary);font-weight:600;padding-top:12px">Library</td></tr>
+                  <tr><td>New set</td><td><kbd>N</kbd></td></tr>
+                  <tr><td>New folder</td><td><kbd>F</kbd></td></tr>
+                  <tr><td>Focus search</td><td><kbd>/</kbd></td></tr>
+                  <tr><td>Clear search / close modal</td><td><kbd>Esc</kbd></td></tr>
+                  <tr><td colspan="2" style="color:var(--text-secondary);font-weight:600;padding-top:12px">Study</td></tr>
+                  <tr><td>Flip card</td><td><kbd>Space</kbd></td></tr>
+                  <tr><td>Go back</td><td><kbd>Esc</kbd></td></tr>
+                  <tr><td colspan="2" style="color:var(--text-secondary);font-weight:600;padding-top:12px">Global</td></tr>
+                  <tr><td>Toggle theme</td><td><kbd>T</kbd></td></tr>
+                  <tr><td>Show shortcuts</td><td><kbd>?</kbd></td></tr>
+                  <tr><td>Go to library</td><td><kbd>H</kbd></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Walkthrough (Phase 8) -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 4px">Walkthrough</h2>
+              <p class="meta-copy" style="margin:0 0 12px">Replay the interactive tour of Carded.</p>
+              <button class="ghost-button" id="show-walkthrough-btn" type="button" disabled style="align-self:flex-start;opacity:0.5">Show walkthrough again</button>
+              <p class="meta-copy" style="margin:4px 0 0">Coming in a future update.</p>
+            </div>
+
+          </div><!-- /tab-preferences -->
+
+          <!-- ── Data tab ────────────────────────────────────────────────────── -->
+          <div id="tab-data" role="tabpanel" class="stack hidden" data-panel="data">
+
+            <!-- Stats -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 16px">Usage stats</h2>
+              <div class="summary-grid" id="stats-grid">
+                <div class="stat-card"><div class="meta-label">Cards reviewed</div><div id="stats-reviewed" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">Study sessions</div><div id="stats-sessions" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">Current streak</div><div id="stats-current-streak" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">Longest streak</div><div id="stats-longest-streak" class="stat-value">—</div></div>
+              </div>
+            </div>
+
+            <!-- Import -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 4px">Import</h2>
+              <p class="meta-copy" style="margin:0">Coming in a future update.</p>
+            </div>
+
+            <!-- Export -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 4px">Export</h2>
+              <p class="meta-copy" style="margin:0">Coming in a future update.</p>
+            </div>
+
+            <!-- Account actions -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 12px">Account</h2>
+              <div style="display:flex;flex-wrap:wrap;gap:12px">
+                <button id="signout-button" class="ghost-button" type="button">Sign out</button>
+                <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
+              </div>
+            </div>
+
+            <p class="meta-copy" style="text-align:center;margin-top:8px">v<span id="app-version">4.0.0</span></p>
+
+          </div><!-- /tab-data -->
+
+        </section><!-- /settings-view -->
       </section>
     </main>
+
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
     <div id="modal-root"></div>
+
+    <!-- Delete account modal -->
     <div id="delete-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
       <div class="modal">
         <h2 id="delete-modal-title">Delete account?</h2>
@@ -126,109 +269,493 @@
         </div>
       </div>
     </div>
+
+    <!-- Crop modal for profile picture -->
+    <div id="crop-modal" class="crop-modal hidden" role="dialog" aria-modal="true" aria-label="Crop profile photo">
+      <div class="crop-modal__inner">
+        <h2 style="margin:0 0 8px">Crop photo</h2>
+        <p class="meta-copy" style="margin:0 0 12px">Drag to position. Scroll or pinch to zoom.</p>
+        <div class="crop-modal__preview">
+          <img id="crop-image" src="" alt="Image to crop">
+        </div>
+        <div class="crop-modal__actions">
+          <button id="crop-cancel" class="ghost-button" type="button">Cancel</button>
+          <button id="crop-confirm" class="button" type="button">Save photo</button>
+        </div>
+      </div>
+    </div>
+
     <script defer>
       document.addEventListener("DOMContentLoaded", async function () {
-        const session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
-        if (!session) return;
 
-        const accountView = document.getElementById("account-view");
-        const recoveryView = document.getElementById("recovery-view");
-        const deleteModal = document.getElementById("delete-modal");
-
-        function formatDate(value) {
-          return value ? new Date(value).toLocaleDateString() : "-";
-        }
-
-        function formatStudyTime(totalSeconds) {
-          return Math.floor((Number(totalSeconds) || 0) / 60) + "m";
-        }
-
-        function toggleRecoveryMode(enabled) {
-          accountView.classList.toggle("hidden", enabled);
-          recoveryView.classList.toggle("hidden", !enabled);
-        }
-
-        toggleRecoveryMode(window.CardedAuth.isPasswordRecoveryMode());
-        accountView.classList.remove("hidden");
-        document.getElementById("app-version").textContent = window.APP_VERSION || "3.0.0";
-        document.getElementById("account-email").textContent = session.user.email || "-";
-        document.getElementById("account-provider").textContent = "Signed in with " + String((session.user.app_metadata && session.user.app_metadata.provider) || "email");
-        document.getElementById("account-created").textContent = formatDate(session.user.created_at);
-
-        try {
-          const stats = await window.CardedSupabaseDB.getOrCreateStats(session.user.id);
-          document.getElementById("stats-time").textContent = formatStudyTime(stats.total_study_time);
-          document.getElementById("stats-reviewed").textContent = String(stats.total_cards_reviewed || 0);
-          document.getElementById("stats-sessions").textContent = String(stats.total_sessions || 0);
-          document.getElementById("stats-current-streak").textContent = String(stats.current_streak || 0);
-          document.getElementById("stats-longest-streak").textContent = String(stats.longest_streak || 0);
-        } catch (error) {
-          window.CardedAuth.showToast("Something went wrong. Please try again.");
-        }
-
-        async function handlePasswordUpdate(form) {
-          const data = new FormData(form);
-          const password = String(data.get("newPassword") || "");
-          const confirmPassword = String(data.get("confirmPassword") || "");
-          if (password !== confirmPassword) {
-            window.CardedAuth.showToast("Passwords do not match.");
-            return;
-          }
-          try {
-            await window.CardedAuth.updatePassword(password);
-            form.reset();
-            toggleRecoveryMode(false);
-            accountView.classList.remove("hidden");
-            window.history.replaceState(null, "", window.location.pathname);
-            window.CardedAuth.showToast("Password updated.");
-          } catch (error) {
-            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
-          }
-        }
-
-        document.getElementById("password-form").addEventListener("submit", function (event) {
-          event.preventDefault();
-          handlePasswordUpdate(event.currentTarget);
+        // ── Password toggle wiring ─────────────────────────────────────────────
+        document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            var input = document.getElementById(button.dataset.togglePassword);
+            if (!input) return;
+            input.type = input.type === "password" ? "text" : "password";
+            button.textContent = input.type === "password" ? "Show" : "Hide";
+          });
         });
 
-        document.getElementById("recovery-form").addEventListener("submit", function (event) {
-          event.preventDefault();
-          handlePasswordUpdate(event.currentTarget);
-        });
+        // ── Recovery mode ──────────────────────────────────────────────────────
+        var isRecovery = window.CardedAuth && typeof window.CardedAuth.isPasswordRecoveryMode === "function"
+          ? window.CardedAuth.isPasswordRecoveryMode()
+          : false;
+        var hashParams = window.CardedAuthGuard.readHashParams();
+        if (!isRecovery && hashParams.get("type") === "recovery") isRecovery = true;
 
-        async function clearLocalUserData(uid) {
-          if (window.CardedDB) {
-            try {
-              const tables = ["folders", "sets", "cards", "user_card_progress", "user_stats"];
-              for (const table of tables) {
-                await window.CardedDB.deleteWhere(table, function (row) {
-                  return row.user_id === uid;
-                }).catch(function () {});
+        if (isRecovery) {
+          document.getElementById("recovery-view").classList.remove("hidden");
+          document.getElementById("recovery-form").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            var data = new FormData(event.currentTarget);
+            var password = String(data.get("newPassword") || "");
+            var confirmPassword = String(data.get("confirmPassword") || "");
+            if (password !== confirmPassword) {
+              window.CardedComponents.showToast("Passwords do not match.");
+              return;
+            }
+            var btn = event.currentTarget.querySelector("[type='submit']");
+            window.CardedUtils.withLoading(btn, async function () {
+              try {
+                await window.CardedAuth.updatePassword(password);
+                event.currentTarget.reset();
+                window.history.replaceState(null, "", window.location.pathname);
+                window.CardedComponents.showToast("Password updated.");
+                document.getElementById("recovery-view").classList.add("hidden");
+                document.getElementById("settings-view").classList.remove("hidden");
+              } catch (error) {
+                window.CardedComponents.showToast(error.message || "Something went wrong. Please try again.");
               }
-            } catch (_) {}
-          }
-          // Clear session cache and sync queue
-          ["carded_user_email", "carded_user_id", "carded_sync_queue", "carded_return_url"].forEach(function (key) {
-            window.CardedUtils.safeRemove(key);
+            });
           });
         }
 
+        // ── Auth guard ─────────────────────────────────────────────────────────
+        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        if (!session) return;
+
+        document.getElementById("settings-view").classList.remove("hidden");
+        document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
+
+        // ── Tab system ─────────────────────────────────────────────────────────
+        function switchTab(name) {
+          document.querySelectorAll("[role='tab']").forEach(function (tab) {
+            var active = tab.dataset.tab === name;
+            tab.setAttribute("aria-selected", active ? "true" : "false");
+          });
+          document.querySelectorAll("[role='tabpanel']").forEach(function (panel) {
+            panel.classList.toggle("hidden", panel.dataset.panel !== name);
+          });
+          // Lazy-load data tab stats on first open
+          if (name === "data" && !statsLoaded) {
+            loadStats(session);
+          }
+        }
+
+        document.querySelectorAll("[role='tab']").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            switchTab(tab.dataset.tab);
+          });
+        });
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+        function getInitial(displayName, email) {
+          var name = displayName || email || "?";
+          return name.trim().charAt(0).toUpperCase();
+        }
+
+        function updateCharCounter(counterId, length, max) {
+          var el = document.getElementById(counterId);
+          if (el) el.textContent = length + " / " + max;
+        }
+
+        function showProfilePicImg(src) {
+          document.getElementById("profile-initial").style.display = "none";
+          var img = document.getElementById("profile-img");
+          img.src = src;
+          img.style.display = "block";
+        }
+
+        function showProfilePicInitial(initial) {
+          document.getElementById("profile-img").style.display = "none";
+          var span = document.getElementById("profile-initial");
+          span.textContent = initial;
+          span.style.display = "";
+        }
+
+        function setActivePfpBtn(pref) {
+          document.querySelectorAll("[data-pfp]").forEach(function (btn) {
+            var active = btn.dataset.pfp === pref;
+            btn.setAttribute("aria-pressed", active ? "true" : "false");
+          });
+        }
+
+        // ── Profile tab ────────────────────────────────────────────────────────
+        var currentDisplayName = "";
+
+        async function loadProfileTab(sess) {
+          // Display name
+          var metaName = sess.user.user_metadata && sess.user.user_metadata.full_name || "";
+          currentDisplayName = metaName;
+          try {
+            var profile = await window.CardedSupabaseDB.getProfile(sess.user.id);
+            if (profile && profile.display_name) {
+              currentDisplayName = profile.display_name;
+            }
+          } catch (_) {}
+
+          var nameInput = document.getElementById("display-name");
+          nameInput.value = currentDisplayName;
+          updateCharCounter("display-name-counter", currentDisplayName.length, 30);
+          if (currentDisplayName) window.CardedUtils.safeSet("carded_display_name", currentDisplayName);
+
+          // Profile picture
+          var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+          setActivePfpBtn(pref);
+          await applyPfpPreference(pref, sess);
+
+          // Auth provider + linking
+          await loadAuthProviders(sess);
+
+          // Show password form only for email users
+          try {
+            var { data: { user } } = await window.supabaseClient.auth.getUser();
+            var identities = user.identities || [];
+            var hasEmail = identities.some(function (i) { return i.provider === "email"; });
+            if (hasEmail) {
+              document.getElementById("password-form").classList.remove("hidden");
+            }
+          } catch (_) {}
+        }
+
+        async function applyPfpPreference(pref, sess) {
+          if (pref === "provider") {
+            var avatarUrl = sess.user.user_metadata && sess.user.user_metadata.avatar_url;
+            if (avatarUrl) {
+              showProfilePicImg(avatarUrl);
+              return;
+            }
+            // Fallback to initial
+            pref = "initial";
+          }
+          if (pref === "custom") {
+            try {
+              var dataUrl = await window.CardedDB.kvGet("profile_pic_custom");
+              if (dataUrl) {
+                showProfilePicImg(dataUrl);
+                return;
+              }
+            } catch (_) {}
+            pref = "initial";
+          }
+          showProfilePicInitial(getInitial(currentDisplayName, sess.user.email));
+        }
+
+        // Display name char counter
+        document.getElementById("display-name").addEventListener("input", function (event) {
+          updateCharCounter("display-name-counter", event.currentTarget.value.length, 30);
+        });
+
+        // Save display name
+        document.getElementById("save-display-name").addEventListener("click", async function () {
+          var name = document.getElementById("display-name").value.trim();
+          var btn = this;
+          window.CardedUtils.withLoading(btn, async function () {
+            try {
+              await window.CardedSupabaseDB.upsertProfile(session.user.id, { display_name: name });
+              currentDisplayName = name;
+              window.CardedUtils.safeSet("carded_display_name", name);
+              // Update initial if using initial mode
+              var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+              if (pref === "initial") {
+                showProfilePicInitial(getInitial(name, session.user.email));
+              }
+              window.CardedComponents.showToast("Name saved.");
+            } catch (error) {
+              window.CardedComponents.showToast(error.message || "Failed to save name.");
+            }
+          });
+        });
+
+        // Profile picture preference buttons
+        document.querySelectorAll("[data-pfp]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var pref = btn.dataset.pfp;
+            if (pref === "custom") {
+              document.getElementById("pfp-file-input").click();
+              return;
+            }
+            if (pref === "provider") {
+              var avatarUrl = session.user.user_metadata && session.user.user_metadata.avatar_url;
+              if (!avatarUrl) {
+                window.CardedComponents.showToast("No provider photo available for your account.");
+                return;
+              }
+            }
+            window.CardedUtils.safeSet("carded_pfp_preference", pref);
+            setActivePfpBtn(pref);
+            await applyPfpPreference(pref, session);
+          });
+        });
+
+        // File input for custom photo
+        document.getElementById("pfp-file-input").addEventListener("change", function (event) {
+          var file = event.currentTarget.files && event.currentTarget.files[0];
+          if (!file) return;
+          if (file.size > 2 * 1024 * 1024) {
+            window.CardedComponents.showToast("Photo must be under 2MB.");
+            event.currentTarget.value = "";
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function (e) {
+            openCropModal(e.target.result);
+          };
+          reader.readAsDataURL(file);
+          event.currentTarget.value = "";
+        });
+
+        // Crop modal logic
+        var cropper = null;
+
+        function openCropModal(dataUrl) {
+          var cropModal = document.getElementById("crop-modal");
+          var cropImg = document.getElementById("crop-image");
+          cropImg.src = dataUrl;
+          cropModal.classList.remove("hidden");
+
+          // Init Cropper.js after image loads
+          cropImg.onload = function () {
+            if (cropper) { cropper.destroy(); cropper = null; }
+            if (window.Cropper) {
+              cropper = new window.Cropper(cropImg, {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: "move",
+                autoCropArea: 0.9,
+                responsive: true,
+              });
+            }
+          };
+        }
+
+        function closeCropModal() {
+          document.getElementById("crop-modal").classList.add("hidden");
+          if (cropper) { cropper.destroy(); cropper = null; }
+        }
+
+        document.getElementById("crop-cancel").addEventListener("click", closeCropModal);
+
+        document.getElementById("crop-confirm").addEventListener("click", async function () {
+          var btn = this;
+          window.CardedUtils.withLoading(btn, async function () {
+            try {
+              var canvas;
+              if (cropper) {
+                canvas = cropper.getCroppedCanvas({ width: 256, height: 256 });
+              } else {
+                // Fallback: resize without crop
+                canvas = document.createElement("canvas");
+                canvas.width = 256;
+                canvas.height = 256;
+                var ctx = canvas.getContext("2d");
+                ctx.drawImage(document.getElementById("crop-image"), 0, 0, 256, 256);
+              }
+              var dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+              await window.CardedDB.kvSet("profile_pic_custom", dataUrl);
+              window.CardedUtils.safeSet("carded_pfp_preference", "custom");
+              setActivePfpBtn("custom");
+              showProfilePicImg(dataUrl);
+              closeCropModal();
+              window.CardedComponents.showToast("Profile photo saved.");
+            } catch (error) {
+              window.CardedComponents.showToast("Failed to save photo.");
+            }
+          });
+        });
+
+        // Auth providers + account linking
+        async function loadAuthProviders(sess) {
+          var container = document.getElementById("auth-provider-list");
+          try {
+            var { data: { user } } = await window.supabaseClient.auth.getUser();
+            userIdentities = user.identities || [];
+
+            var html = "";
+            var providers = [
+              { id: "google", label: "Google" },
+              { id: "github", label: "GitHub" },
+              { id: "email", label: "Email" },
+            ];
+
+            providers.forEach(function (p) {
+              var identity = userIdentities.find(function (i) { return i.provider === p.id; });
+              var email = identity && (identity.identity_data && identity.identity_data.email || "");
+              var isOnlyProvider = userIdentities.length === 1 && identity;
+
+              html += '<div class="provider-row">';
+              html += '<div class="provider-row__info">';
+              html += '<span class="provider-row__name">' + p.label + '</span>';
+              if (identity && email) {
+                html += '<span class="provider-row__email">' + email + '</span>';
+              } else if (!identity) {
+                html += '<span class="provider-row__email" style="color:var(--text-tertiary)">Not connected</span>';
+              }
+              html += '</div>';
+
+              if (identity) {
+                if (!isOnlyProvider && p.id !== "email") {
+                  html += '<button class="ghost-button" style="font-size:0.82rem;padding:6px 12px;color:var(--danger-text)" data-unlink-idx="' + userIdentities.indexOf(identity) + '" type="button">Unlink</button>';
+                } else if (isOnlyProvider) {
+                  html += '<span class="meta-copy" style="font-size:0.78rem">Primary</span>';
+                }
+              } else if (p.id !== "email") {
+                html += '<button class="ghost-button" style="font-size:0.82rem;padding:6px 12px" data-link-provider="' + p.id + '" type="button">Link</button>';
+              }
+              html += '</div>';
+            });
+
+            container.innerHTML = html;
+
+            container.querySelectorAll("[data-link-provider]").forEach(function (btn) {
+              btn.addEventListener("click", async function () {
+                var provider = btn.dataset.linkProvider;
+                window.CardedUtils.withLoading(btn, async function () {
+                  try {
+                    await window.supabaseClient.auth.linkIdentity({
+                      provider: provider,
+                      options: { redirectTo: window.location.origin + window.BASE_PATH + "/account" },
+                    });
+                  } catch (error) {
+                    window.CardedComponents.showToast(error.message || "Failed to link account.");
+                  }
+                });
+              });
+            });
+
+            container.querySelectorAll("[data-unlink-idx]").forEach(function (btn) {
+              btn.addEventListener("click", async function () {
+                var idx = parseInt(btn.dataset.unlinkIdx, 10);
+                var identity = userIdentities[idx];
+                if (!identity) return;
+                window.CardedComponents.showModal({
+                  title: "Unlink account?",
+                  copy: "You will no longer be able to sign in with this method.",
+                  confirmLabel: "Unlink",
+                  cancelLabel: "Cancel",
+                  danger: true,
+                  onConfirm: async function () {
+                    try {
+                      await window.supabaseClient.auth.unlinkIdentity(identity);
+                      await loadAuthProviders(sess);
+                      window.CardedComponents.showToast("Account unlinked.");
+                    } catch (error) {
+                      window.CardedComponents.showToast(error.message || "Failed to unlink.");
+                    }
+                  },
+                });
+              });
+            });
+
+          } catch (error) {
+            container.innerHTML = '<p class="meta-copy">Failed to load sign-in info.</p>';
+          }
+        }
+
+        var userIdentities = [];
+
+        // Password change form
+        document.getElementById("password-form").addEventListener("submit", async function (event) {
+          event.preventDefault();
+          var data = new FormData(event.currentTarget);
+          var password = String(data.get("newPassword") || "");
+          var confirmPassword = String(data.get("confirmPassword") || "");
+          if (password !== confirmPassword) {
+            window.CardedComponents.showToast("Passwords do not match.");
+            return;
+          }
+          var btn = event.currentTarget.querySelector("[type='submit']");
+          window.CardedUtils.withLoading(btn, async function () {
+            try {
+              await window.CardedAuth.updatePassword(password);
+              event.currentTarget.reset();
+              window.CardedComponents.showToast("Password updated.");
+            } catch (error) {
+              window.CardedComponents.showToast(error.message || "Something went wrong. Please try again.");
+            }
+          });
+        });
+
+        // ── Preferences tab ────────────────────────────────────────────────────
+        var currentTheme = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "auto";
+
+        function markThemeSelected(theme) {
+          document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+            btn.setAttribute("aria-pressed", btn.dataset.themeChoice === theme ? "true" : "false");
+          });
+        }
+
+        markThemeSelected(currentTheme);
+
+        document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+          btn.addEventListener("mouseenter", function () {
+            if (window.CardedTheme) window.CardedTheme.applyTheme(btn.dataset.themeChoice);
+          });
+          btn.addEventListener("mouseleave", function () {
+            if (window.CardedTheme) window.CardedTheme.applyTheme(currentTheme);
+          });
+          btn.addEventListener("click", function () {
+            currentTheme = btn.dataset.themeChoice;
+            if (window.CardedTheme) window.CardedTheme.setTheme(currentTheme);
+            markThemeSelected(currentTheme);
+          });
+        });
+
+        // ── Data tab ───────────────────────────────────────────────────────────
+        var statsLoaded = false;
+
+        async function loadStats(sess) {
+          statsLoaded = true;
+          try {
+            var stats = await window.CardedSupabaseDB.getOrCreateStats(sess.user.id);
+            document.getElementById("stats-reviewed").textContent = String(stats.total_cards_reviewed || 0);
+            document.getElementById("stats-sessions").textContent = String(stats.total_sessions || 0);
+            document.getElementById("stats-current-streak").textContent = String(stats.current_streak || 0);
+            document.getElementById("stats-longest-streak").textContent = String(stats.longest_streak || 0);
+          } catch (error) {
+            document.getElementById("stats-grid").innerHTML = '<p class="meta-copy">Failed to load stats.</p>';
+          }
+        }
+
+        // Sign out
         document.getElementById("signout-button").addEventListener("click", async function () {
-          const uid = session.user.id;
+          var uid = session.user.id;
           var rawQueue = window.CardedUtils.safeGet("carded_sync_queue");
           var queue = [];
           try { queue = rawQueue ? JSON.parse(rawQueue) : []; } catch (_) {}
 
           async function doSignOut() {
             try {
-              await clearLocalUserData(uid);
+              if (window.CardedDB) {
+                var tables = ["folders", "sets", "cards", "user_card_progress", "user_stats"];
+                for (var t = 0; t < tables.length; t++) {
+                  await window.CardedDB.deleteWhere(tables[t], function (row) {
+                    return row.user_id === uid;
+                  }).catch(function () {});
+                }
+              }
+              ["carded_user_email", "carded_user_id", "carded_sync_queue", "carded_return_url", "carded_display_name", "carded_pfp_preference"].forEach(function (key) {
+                window.CardedUtils.safeRemove(key);
+              });
               await window.CardedAuth.signOut().catch(function () {
-                var sbKey = "sb-" + window.SUPABASE_URL.match(/\/\/([^.]+)/)[1] + "-auth-token";
-                window.CardedUtils.safeRemove(sbKey);
+                var match = window.SUPABASE_URL ? window.SUPABASE_URL.match(/\/\/([^.]+)/) : null;
+                if (match) window.CardedUtils.safeRemove("sb-" + match[1] + "-auth-token");
               });
               window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
             } catch (error) {
-              window.CardedComponents.showToast(error.message || "Something went wrong. Please try again.");
+              window.CardedComponents.showToast(error.message || "Something went wrong.");
             }
           }
 
@@ -246,9 +773,11 @@
           }
         });
 
-        var deleteModalPreviousFocus = null;
+        // Delete account modal
+        var deleteModal = document.getElementById("delete-modal");
         var deleteConfirmEmail = document.getElementById("delete-confirm-email");
         var deleteEmailError = document.getElementById("delete-email-error");
+        var deleteModalPreviousFocus = null;
 
         function openDeleteModal() {
           deleteModalPreviousFocus = document.activeElement;
@@ -256,12 +785,8 @@
           deleteEmailError.classList.add("hidden");
           deleteModal.classList.remove("hidden");
           deleteConfirmEmail.focus();
-          // Focus trap
           deleteModal.querySelector(".modal").addEventListener("keydown", function onModalKey(event) {
-            if (event.key === "Escape") {
-              closeDeleteModal();
-              return;
-            }
+            if (event.key === "Escape") { closeDeleteModal(); return; }
             if (event.key !== "Tab") return;
             var focusable = Array.from(deleteModal.querySelectorAll("input, button:not([disabled])"));
             var first = focusable[0];
@@ -295,16 +820,19 @@
           }
           deleteEmailError.classList.add("hidden");
           try {
-            const response = await window.supabaseClient.rpc("delete_user");
+            var response = await window.supabaseClient.rpc("delete_user");
             if (response.error) throw response.error;
             await window.CardedAuth.signOut();
             window.CardedUtils.redirectTo(window.BASE_PATH, null, true);
           } catch (error) {
-            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+            window.CardedComponents.showToast(error.message || "Something went wrong. Please try again.");
           } finally {
             closeDeleteModal();
           }
         });
+
+        // ── Init profile tab ───────────────────────────────────────────────────
+        await loadProfileTab(session);
       });
     </script>
   </body>
