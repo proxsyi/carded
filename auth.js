@@ -4,13 +4,20 @@
   const PASSWORD_RECOVERY_KEY = "carded_password_recovery";
 
   function showToast(message) {
+    if (window.CardedComponents && typeof window.CardedComponents.showToast === "function") {
+      window.CardedComponents.showToast(message);
+      return;
+    }
+    // Fallback for pages that don't load components.js
     const root = document.getElementById("toast-root");
     if (!root) return;
     root.textContent = "";
     const toast = document.createElement("div");
     toast.className = "toast";
     toast.setAttribute("role", "status");
-    toast.textContent = message;
+    const p = document.createElement("p");
+    p.textContent = message;
+    toast.appendChild(p);
     root.appendChild(toast);
     window.setTimeout(function () {
       toast.remove();

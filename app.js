@@ -7,7 +7,7 @@
   const MIGRATION_DONE_KEY = "carded_v1_migration_done";
   const MIGRATION_SKIPPED_KEY = "carded_v1_migration_skipped";
   const STUDY_SESSION_KEY = "carded_study_session";
-  const MAX_NAME_LENGTH = 40;
+  const MAX_NAME_LENGTH = 30;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   const state = {
@@ -391,10 +391,18 @@
 
   async function persistEntity(table, operation, row) {
     return enqueueWrite(async function () {
-      if (operation === "delete") {
-        await window.CardedDB.deleteById(table, row.id);
-      } else {
-        await window.CardedDB.put(table, row);
+      try {
+        if (operation === "delete") {
+          await window.CardedDB.deleteById(table, row.id);
+        } else {
+          await window.CardedDB.put(table, row);
+        }
+      } catch (dbError) {
+        if (dbError && (dbError.name === "QuotaExceededError" || (dbError.inner && dbError.inner.name === "QuotaExceededError"))) {
+          showToast("Storage is full — try deleting unused sets or clearing browser data.");
+          return;
+        }
+        throw dbError;
       }
 
       const result = await window.CardedSync.syncMutation(table, operation, row);
@@ -1185,20 +1193,17 @@
     const sets = state.sets.filter((item) => item.folderId === folder.id);
     const totalCards = sets.reduce((sum, item) => sum + getCardsForSet(item.id).length, 0);
     return `
-      <article class="tile folder" data-folder-tile="${folder.id}">
+      <article class="tile folder" data-folder-tile="${folder.id}" data-open-folder="${folder.id}" tabindex="0" role="button" aria-label="Open folder ${escapeAttribute(folder.name)}">
         <div class="tile__header">
           <div class="stack">
-            <strong class="tile__name inline-editable" data-open-folder="${folder.id}" contenteditable="false" data-edit-kind="folder" data-id="${folder.id}" title="${escapeAttribute(folder.name)}">${escapeHtml(truncate(folder.name))}</strong>
-            <span class="meta-copy">${sets.length} set${sets.length === 1 ? "" : "s"}</span>
+            <strong class="tile__name inline-editable" contenteditable="false" data-edit-kind="folder" data-id="${folder.id}" title="${escapeAttribute(folder.name)}">${escapeHtml(truncate(folder.name))}</strong>
+            <span class="meta-copy">${sets.length} set${sets.length === 1 ? "" : "s"} · ${totalCards} card${totalCards === 1 ? "" : "s"}</span>
           </div>
-          <span class="badge">${totalCards}</span>
         </div>
         <div class="tile__meta">
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(folder.createdAt)}</span></div>
-          <div class="meta-item"><span class="meta-label">Cards</span><span>${totalCards}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="${buildLibraryHref({ folderId: folder.id })}">Open folder</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
@@ -1208,28 +1213,29 @@
   }
 
   function renderSetTile(set, folder) {
+    const cardCount = getCardsForSet(set.id).length;
     return `
       <article
         class="tile set"
         draggable="true"
         tabindex="0"
+        role="button"
         data-set-tile="${set.id}"
+        data-open-set="${set.id}"
         data-folder-id="${folder ? folder.id : ""}"
-        aria-label="Set ${escapeAttribute(set.name)}"
+        aria-label="Open set ${escapeAttribute(set.name)}"
       >
         <div class="tile__header">
           <div class="stack">
-            <strong class="tile__name inline-editable" data-open-set="${set.id}" contenteditable="false" data-edit-kind="set" data-id="${set.id}" title="${escapeAttribute(set.name)}">${escapeHtml(truncate(set.name))}</strong>
-            <span class="meta-copy">${folder ? escapeHtml(folder.name) : "Standalone set"}</span>
+            <strong class="tile__name inline-editable" contenteditable="false" data-edit-kind="set" data-id="${set.id}" title="${escapeAttribute(set.name)}">${escapeHtml(truncate(set.name))}</strong>
+            <span class="meta-copy">${cardCount} card${cardCount === 1 ? "" : "s"}${folder ? " · " + escapeHtml(folder.name) : ""}</span>
           </div>
-          <span class="badge">${getCardsForSet(set.id).length}</span>
         </div>
         <div class="tile__meta">
           <div class="meta-item"><span class="meta-label">Last studied</span><span>${formatRelativeTime(set.lastStudied)}</span></div>
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(set.createdAt)}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="${buildLibraryHref({ setId: set.id })}">Open set</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
@@ -1713,7 +1719,7 @@
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "New folder",
-      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "" },
+      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "", maxLength: MAX_NAME_LENGTH },
       confirmLabel: "Create",
       danger: false,
       onConfirm: async function (inputValue) {
@@ -1736,7 +1742,7 @@
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "New set",
-      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "" },
+      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "", maxLength: MAX_NAME_LENGTH },
       confirmLabel: "Create",
       danger: false,
       onConfirm: async function (inputValue) {
@@ -1822,13 +1828,17 @@
     }
 
     const confirmClass = state.modal.danger !== false ? "danger-button" : "button";
-    const inputHtml = state.modal.input
+    const modalInput = state.modal.input;
+    const inputMaxLen = modalInput && modalInput.maxLength ? modalInput.maxLength : null;
+    const inputHtml = modalInput
       ? `<div class="field">
-           <label for="modal-input">${escapeHtml(state.modal.input.label || "")}</label>
+           <label for="modal-input">${escapeHtml(modalInput.label || "")}</label>
            <input id="modal-input" class="input modal__input" type="text"
-             value="${escapeHtml(state.modal.input.value || "")}"
-             placeholder="${escapeHtml(state.modal.input.placeholder || "")}"
+             value="${escapeHtml(modalInput.value || "")}"
+             placeholder="${escapeHtml(modalInput.placeholder || "")}"
+             ${inputMaxLen ? `maxlength="${inputMaxLen}"` : ""}
              autocomplete="off">
+           ${inputMaxLen ? `<span id="modal-char-counter" style="font-size:0.88rem;color:var(--text-secondary);text-align:right">${(modalInput.value || "").length} / ${inputMaxLen}</span>` : ""}
          </div>`
       : "";
 
@@ -1848,6 +1858,15 @@
 
     // Prevent background interaction
     els.appShell && els.appShell.setAttribute("aria-hidden", "true");
+
+    // Character counter update
+    const charInput = els.modalRoot.querySelector("#modal-input");
+    const charCounter = els.modalRoot.querySelector("#modal-char-counter");
+    if (charInput && charCounter) {
+      charInput.addEventListener("input", function () {
+        charCounter.textContent = charInput.value.length + " / " + (inputMaxLen || "");
+      });
+    }
 
     // Auto-focus: input if present, else confirm button
     const focusTarget = els.modalRoot.querySelector("#modal-input") ||

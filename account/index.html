@@ -16,15 +16,16 @@
     <link rel="manifest" href="/carded/manifest.webmanifest">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
     <meta name="referrer" content="no-referrer">
-    <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
-    <script src="/carded/config.js?v=3.0.0" defer></script>
-    <script src="/carded/utils.js?v=3.0.0" defer></script>
-    <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
-    <script src="/carded/db.js?v=3.0.0" defer></script>
-    <script src="/carded/auth.js?v=3.0.0" defer></script>
-    <script src="/carded/supabase-db.js?v=3.0.0" defer></script>
+    <script src="/carded/config.js?v=4.0.0" defer></script>
+    <script src="/carded/utils.js?v=4.0.0" defer></script>
+    <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
+    <script src="/carded/components.js?v=4.0.0" defer></script>
+    <script src="/carded/db.js?v=4.0.0" defer></script>
+    <script src="/carded/auth.js?v=4.0.0" defer></script>
+    <script src="/carded/supabase-db.js?v=4.0.0" defer></script>
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -33,7 +34,7 @@
       <section class="auth-card account-card">
         <div class="auth-header-row">
           <div>
-            <p class="eyebrow">Carded</p>
+            <a href="/carded/library" class="eyebrow" style="text-decoration:none">Carded</a>
             <h1>Account</h1>
           </div>
           <a class="ghost-button" href="/carded/library">Back to library</a>
@@ -108,6 +109,7 @@
       </section>
     </main>
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <div id="modal-root"></div>
     <div id="delete-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
       <div class="modal">
         <h2 id="delete-modal-title">Delete account?</h2>
@@ -212,24 +214,34 @@
 
         document.getElementById("signout-button").addEventListener("click", async function () {
           const uid = session.user.id;
-          // Warn if there are unsynced changes
           var rawQueue = window.CardedUtils.safeGet("carded_sync_queue");
           var queue = [];
           try { queue = rawQueue ? JSON.parse(rawQueue) : []; } catch (_) {}
-          if (queue.length > 0) {
-            var confirmed = window.confirm("You have " + queue.length + " unsynced change" + (queue.length !== 1 ? "s" : "") + ". They'll be lost if you sign out. Continue?");
-            if (!confirmed) return;
+
+          async function doSignOut() {
+            try {
+              await clearLocalUserData(uid);
+              await window.CardedAuth.signOut().catch(function () {
+                var sbKey = "sb-" + window.SUPABASE_URL.match(/\/\/([^.]+)/)[1] + "-auth-token";
+                window.CardedUtils.safeRemove(sbKey);
+              });
+              window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
+            } catch (error) {
+              window.CardedComponents.showToast(error.message || "Something went wrong. Please try again.");
+            }
           }
-          try {
-            await clearLocalUserData(uid);
-            await window.CardedAuth.signOut().catch(function () {
-              // If signOut fails (offline), manually clear auth token
-              var sbKey = "sb-" + window.SUPABASE_URL.match(/\/\/([^.]+)/)[1] + "-auth-token";
-              window.CardedUtils.safeRemove(sbKey);
+
+          if (queue.length > 0) {
+            window.CardedComponents.showModal({
+              title: "Unsaved changes",
+              copy: "You have " + queue.length + " unsynced change" + (queue.length !== 1 ? "s" : "") + ". They'll be lost if you sign out. Continue?",
+              confirmLabel: "Sign out",
+              cancelLabel: "Stay",
+              danger: true,
+              onConfirm: doSignOut,
             });
-            window.CardedUtils.redirectTo(window.BASE_PATH + "/login", null, true);
-          } catch (error) {
-            window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
+          } else {
+            await doSignOut();
           }
         });
 
