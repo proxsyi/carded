@@ -1,4 +1,4 @@
-const CACHE_NAME = "carded-static-v6";
+const CACHE_NAME = "carded-static-v7";
 const APP_SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const APP_SHELL_ASSETS = [
   "./library/index.html",
   "./study/index.html",
   "./account/index.html",
+  "./pending-deletion/index.html",
   "./tos/index.html",
   "./privacy/index.html",
   "./404.html",
@@ -21,6 +22,8 @@ const APP_SHELL_ASSETS = [
   "./db.js?v=4.0.0",
   "./supabase-db.js?v=4.0.0",
   "./sync.js?v=4.0.0",
+  "./shortcuts.js?v=4.0.0",
+  "./walkthrough.js?v=4.0.0",
   "./app.js?v=4.0.0",
   "./styles.css?v=4.0.0",
   "./manifest.webmanifest",
