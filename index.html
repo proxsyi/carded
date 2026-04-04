@@ -56,7 +56,7 @@
         <h1>Study smarter. Remember more.</h1>
         <p class="section-copy">Offline-first flashcards with cloud sync, fast study sessions, and zero clutter.</p>
         <div class="landing-actions">
-          <a class="button" href="/carded/login">Get Started</a>
+          <a class="button" href="/carded/login" id="landing-hero-btn">Get Started</a>
           <a class="ghost-button" href="/carded/privacy">Privacy</a>
         </div>
       </section>
@@ -148,17 +148,60 @@
           });
         }
 
-        // Update header based on auth state
+        // Update header and hero based on auth state
         var loginBtn = document.getElementById("landing-login-btn");
+        var heroBtn = document.getElementById("landing-hero-btn");
         var brandLink = document.getElementById("homepage-brand-link");
         if (session && session.user) {
-          // Logged in — show "Library" button, update brand link
+          // Logged in or local mode — show profile circle in topbar, "Library →" in hero
           if (loginBtn) {
-            loginBtn.href = "/carded/library";
-            loginBtn.textContent = "Library →";
-            loginBtn.className = "button";
+            var meta = session.user.user_metadata || {};
+            var name = meta.full_name || meta.name || session.user.email || "";
+            var initial = name.charAt(0).toUpperCase() || "?";
+            var profileEl = document.createElement("a");
+            profileEl.className = "account-link";
+            profileEl.href = "/carded/account";
+            profileEl.setAttribute("aria-label", "Open account");
+            profileEl.innerHTML = '<span class="account-link__avatar" aria-hidden="true">' + initial + '</span>';
+            loginBtn.replaceWith(profileEl);
+          }
+          if (heroBtn) {
+            heroBtn.href = "/carded/library";
+            heroBtn.textContent = "Library →";
           }
           if (brandLink) brandLink.href = "/carded/library";
+        }
+
+        // Interactive demo card — click to flip, auto-flip loop
+        var demoCard = document.querySelector(".landing-demo__card");
+        if (demoCard) {
+          var demoFlipped = false;
+          var demoTimer = null;
+
+          function flipDemo(flipped) {
+            demoFlipped = flipped;
+            demoCard.parentElement.classList.toggle("landing-demo--flipped", flipped);
+          }
+
+          function scheduleAutoFlip() {
+            clearTimeout(demoTimer);
+            demoTimer = setTimeout(function () {
+              flipDemo(!demoFlipped);
+              scheduleAutoFlip();
+            }, 4000);
+          }
+
+          demoCard.addEventListener("click", function () {
+            clearTimeout(demoTimer);
+            flipDemo(!demoFlipped);
+            // Resume auto-flip after 6s of inactivity
+            demoTimer = setTimeout(function () {
+              scheduleAutoFlip();
+            }, 6000);
+          });
+
+          // Start auto-flip after 4s
+          scheduleAutoFlip();
         }
 
         var deferredPrompt = null;

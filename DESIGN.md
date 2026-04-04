@@ -169,9 +169,9 @@ All spacing uses multiples of 4px:
 | Progress bar width | `0.2s ease` |
 | Flip card rotation | `0.4s ease` |
 | Toast slide in/out | `0.18s ease` |
-| Theme switch (bg, color, border, shadow) | `0.3s ease` |
+| Theme switch (bg, color, border, shadow) | `0.35s ease` |
 
-**Theme transitions**: All themed elements must include a smooth transition on color changes. Apply `transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease` to any element that changes appearance between themes. No instant color swaps anywhere.
+**Theme transitions**: All themed elements must include a smooth transition on color changes. Apply `transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease` to any element that changes appearance between themes. No instant color swaps anywhere. Transform/scale hover transitions may remain at `0.2s ease`, but ALL color-related properties must use `0.35s ease` to ensure a unified fade when the theme is toggled.
 
 ---
 
