@@ -96,7 +96,9 @@
         break;
       case "h":
       case "H":
-        if (window.BASE_PATH) window.location.assign(window.BASE_PATH + "/library");
+        if (window.BASE_PATH && !window.location.pathname.startsWith(window.BASE_PATH + "/library")) {
+          window.location.assign(window.BASE_PATH + "/library");
+        }
         break;
     }
   }, true); // capture phase so it fires before app.js's bubble-phase listener
