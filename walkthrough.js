@@ -60,9 +60,9 @@
     },
     {
       title: "Keyboard shortcuts",
-      desc: "Use these shortcuts to navigate faster. Press \u00a0\ufe0f?\u00a0\ufe0f anytime to see them again.",
-      target: null, // show shortcuts overlay
-      isShortcutStep: true,
+      desc: "Use these to navigate faster. Press <kbd>?</kbd> anytime to see this list again.",
+      target: null,
+      isShortcutStep: true, // renders shortcut table inline instead of plain text
     },
   ];
 
@@ -199,7 +199,34 @@
 
     // Update text
     if (els.titleEl) els.titleEl.textContent = step.title;
-    if (els.descEl) els.descEl.textContent = step.desc;
+    if (els.descEl) {
+      if (step.isShortcutStep) {
+        // Render shortcut table inline — overlay z-index would be hidden behind backdrop
+        els.descEl.innerHTML =
+          '<p style="margin:0 0 10px;font-size:0.9rem;color:var(--text-secondary)">' +
+          'Use these to navigate faster. Press <kbd>?</kbd> anytime to see this list again.</p>' +
+          '<table class="shortcut-table" style="font-size:0.82rem">' +
+          '<tbody>' +
+          '<tr><td colspan="2" class="shortcut-group">Library</td></tr>' +
+          '<tr><td>New set</td><td><kbd>N</kbd></td></tr>' +
+          '<tr><td>New folder</td><td><kbd>F</kbd></td></tr>' +
+          '<tr><td>Focus search</td><td><kbd>/</kbd></td></tr>' +
+          '<tr><td colspan="2" class="shortcut-group">Study</td></tr>' +
+          '<tr><td>Flip card</td><td><kbd>Space</kbd></td></tr>' +
+          '<tr><td>Go back</td><td><kbd>Esc</kbd></td></tr>' +
+          '<tr><td colspan="2" class="shortcut-group">Global</td></tr>' +
+          '<tr><td>Toggle theme</td><td><kbd>T</kbd></td></tr>' +
+          '<tr><td>Show shortcuts</td><td><kbd>?</kbd></td></tr>' +
+          '<tr><td>Go to library</td><td><kbd>H</kbd></td></tr>' +
+          '</tbody></table>';
+        els.tooltip.style.maxWidth = "420px";
+        els.tooltip.style.width = Math.min(420, window.innerWidth - 32) + "px";
+      } else {
+        els.descEl.textContent = step.desc;
+        els.tooltip.style.maxWidth = "";
+        els.tooltip.style.width = "";
+      }
+    }
     if (els.stepCounter) els.stepCounter.textContent = (index + 1) + " / " + STEPS.length;
     if (els.prevBtn) els.prevBtn.disabled = index === 0;
     if (els.nextBtn) els.nextBtn.textContent = isLast ? "Done" : "Next";
@@ -208,13 +235,6 @@
       state.skipConfirm = false;
     }
     if (els.skipBtn) els.skipBtn.style.display = isLast ? "none" : "";
-
-    // Shortcut step: show shortcuts overlay
-    if (step.isShortcutStep && window.CardedShortcuts) {
-      window.CardedShortcuts.showShortcutsOverlay();
-    } else if (window.CardedShortcuts) {
-      window.CardedShortcuts.hideShortcutsOverlay();
-    }
 
     var rect = getTargetRect(step);
 
