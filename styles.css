@@ -150,6 +150,7 @@
 *::after {
   box-sizing: border-box;
   outline: none;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* Prevent text selection on interactive chrome */
@@ -451,7 +452,7 @@ select:focus-visible,
   padding: 0 16px;
   border-radius: 8px;
   border: 1px solid transparent;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .button {
@@ -462,6 +463,7 @@ select:focus-visible,
 
 .button:hover {
   background: var(--accent-hover);
+  transform: translateY(-2px);
 }
 
 .ghost-button,
@@ -473,7 +475,11 @@ select:focus-visible,
 }
 
 .ghost-button:hover,
-.icon-button:hover,
+.icon-button:hover {
+  background: var(--bg-tertiary);
+  transform: translateY(-2px);
+}
+
 .pill-button:hover {
   background: var(--bg-tertiary);
 }
@@ -486,6 +492,11 @@ select:focus-visible,
 
 .danger-button:hover {
   background: var(--danger-hover);
+  transform: translateY(-2px);
+}
+
+.link-button:hover {
+  opacity: 0.8;
 }
 
 .pill-button.active {
@@ -811,7 +822,6 @@ select:focus-visible,
   min-height: 360px;
   perspective: 1200px;
   padding: 0;
-  overflow: hidden;
 }
 
 .flip-card {
@@ -819,7 +829,8 @@ select:focus-visible,
   width: 100%;
   min-height: 360px;
   transform-style: preserve-3d;
-  transition: transform 0.4s ease;
+  transition: transform 0.6s ease;
+  cursor: pointer;
 }
 
 .flip-card.is-flipped {

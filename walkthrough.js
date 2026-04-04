@@ -3,7 +3,7 @@
 
   var COMPLETE_KEY = "carded_walkthrough_complete";
   var PENDING_KEY = "carded_walkthrough_pending";
-  var STEP_DURATION = 7000; // ms per step
+  var STEP_DURATION = 14000; // ms per step
   var TRANSITION_DURATION = 400; // ms
 
   var state = {

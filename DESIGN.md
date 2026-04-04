@@ -169,6 +169,9 @@ All spacing uses multiples of 4px:
 | Progress bar width | `0.2s ease` |
 | Flip card rotation | `0.4s ease` |
 | Toast slide in/out | `0.18s ease` |
+| Theme switch (bg, color, border, shadow) | `0.3s ease` |
+
+**Theme transitions**: All themed elements must include a smooth transition on color changes. Apply `transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease` to any element that changes appearance between themes. No instant color swaps anywhere.
 
 ---
 
@@ -194,7 +197,9 @@ All spacing uses multiples of 4px:
 | `.icon-button` | Outlined surface | Icon-only or compact |
 | `.link-button` | Transparent, accent text | Inline text action |
 
-All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: 0.15s ease`.
+All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: all 0.2s ease`.
+
+**Button hover pattern** (universal): `transform: translateY(-2px)` + background highlight on hover. Every button class must implement this. No hover state should be flat (no transform, no color change).
 
 ### Cards / Tiles
 
@@ -208,6 +213,24 @@ All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: 
 - `.modal-backdrop`: `rgba(8, 8, 11, 0.72)` overlay, centered
 - `.modal`: `border-radius: 16px`, `padding: 24px`, width `min(460px, 100%)`
 - Focus trapped on open, restored on close
+
+**Required modal behaviors** (all modals/overlays must implement):
+1. Click outside modal content → close
+2. `Escape` key → close
+3. Cancel/confirm buttons must be wired and functional
+4. Never ship a modal with dead buttons or non-functional dismiss
+
+### Header
+
+Every page (homepage and authenticated pages alike) must include the same top bar: logo on the left, theme toggle on the right, and either a profile link or login button. No page is exempt from this rule.
+
+### Card Flip Animation
+
+Standard flip animation specs:
+- Container: `perspective: 1000px`
+- Inner element on flip: `transform: rotateY(180deg)`
+- Both faces: `backface-visibility: hidden`
+- Transition: `transform 0.6s ease` (not `0.4s` — that's the shorter variant used for tiles; full card flips use `0.6s`)
 
 ### Toasts
 
@@ -266,14 +289,21 @@ All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: 
 - Spotlight: `.wt-spotlight` — `box-shadow: 0 0 0 9999px rgba(0,0,0,0.6)`, `border-radius: 10px`, CSS transitions for smooth movement
 - Tooltip: `.wt-tooltip` — `background: --bg-secondary`, `border: 1px solid --border`, `border-radius: 14px`, `padding: 20px`, max-width 340px, z-index 1002
 - Progress bar track: `height: 3px`, `background: --bg-tertiary`; fill: `background: --accent`
-- Auto-progression: 7 seconds per step, animates via `requestAnimationFrame`
+- Auto-progression: **12–15 seconds per step** (never less than 12s — users need time to read); animates via `requestAnimationFrame`
 - Z-index stack: backdrop 1000, spotlight 1001, tooltip 1002
+- Steps that open a secondary overlay (e.g. shortcuts) must render content INLINE in the tooltip — do not call `showShortcutsOverlay()` or any overlay that would be obscured behind z-index 1000
 
 ## Shortcuts Overlay
 
 - Reuses `.modal-backdrop` + `.modal` patterns
 - `.shortcuts-modal`: `width: min(520px, 100%)`
 - `.shortcut-group`: uppercase label rows, `font-size: 0.82rem`, `color: --text-secondary`
+
+## Data Patterns
+
+**Cascade deletes**: Deleting a folder must cascade to all child sets and their cards. Delete order: cards → sets → folder. Never leave orphaned sets or cards in the database or IndexedDB. The same cascade applies in both local (Dexie) and remote (Supabase) layers.
+
+---
 
 ## Homepage Demo (`.landing-demo`)
 

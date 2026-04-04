@@ -1445,9 +1445,8 @@
         navigateToLibrary({ setId: target.dataset.setId });
         break;
       case "flip-study-card":
-        if (state.studySession) {
-          state.studySession.isFlipped = !state.studySession.isFlipped;
-          render();
+        if (state.studySession && !state.studySession.complete) {
+          flipStudyCard();
         }
         break;
       case "flip-got-it":
@@ -1682,8 +1681,7 @@
       if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
         if (!state.studySession.isFlipped) {
-          state.studySession.isFlipped = true;
-          render();
+          flipStudyCard();
         } else {
           // Enter = Got it, Backspace = Missed it when flipped
           advanceStudy("got-it");
@@ -1890,11 +1888,15 @@
   function confirmDeleteFolder(folderId) {
     const folder = getFolder(folderId);
     if (!folder) return;
+    const setCount = state.sets.filter((s) => s.folderId === folderId).length;
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete folder?",
-      copy: "Sets inside this folder will become standalone. The folder itself will be removed.",
+      copy: setCount > 0
+        ? `This will permanently delete the folder and all ${setCount} set${setCount !== 1 ? "s" : ""} inside it, including all their cards. This cannot be undone.`
+        : "This will permanently delete this folder. This cannot be undone.",
       confirmLabel: "Delete folder",
+      danger: true,
       onConfirm: async () => {
         await deleteFolder(folderId);
         state.modal = null;
@@ -1990,6 +1992,19 @@
 
     // Prevent background interaction
     els.appShell && els.appShell.setAttribute("aria-hidden", "true");
+
+    // Click outside to close
+    const backdrop = els.modalRoot.querySelector(".modal-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", function (e) {
+        if (e.target === backdrop) {
+          if (state.modal && typeof state.modal.onCancel === "function") state.modal.onCancel();
+          state.modal = null;
+          els.appShell && els.appShell.removeAttribute("aria-hidden");
+          renderModal();
+        }
+      });
+    }
 
     // Character counter update
     const charInput = els.modalRoot.querySelector("#modal-input");
@@ -2148,11 +2163,8 @@
   async function deleteFolder(folderId) {
     const affectedSets = state.sets.filter((item) => item.folderId === folderId);
     for (const set of affectedSets) {
-      set.folderId = null;
-      set.order = nextOrder(state.sets.filter((item) => item.folderId === null && item.id !== set.id));
-      await persistEntity("sets", "update", setToRow(set));
+      await deleteSet(set.id);
     }
-
     await persistEntity("folders", "delete", { id: folderId });
     state.folders = state.folders.filter((item) => item.id !== folderId);
   }
@@ -2467,6 +2479,35 @@
       mode: "flip",
     };
     saveStudySessionState();
+  }
+
+  function flipStudyCard() {
+    if (!state.studySession || state.studySession.complete) return;
+    state.studySession.isFlipped = !state.studySession.isFlipped;
+    const flipEl = document.querySelector(".flip-card");
+    if (flipEl) {
+      flipEl.classList.toggle("is-flipped", state.studySession.isFlipped);
+      // Update verdict row / hint without a full re-render
+      const hintEl = document.querySelector(".flip-hint");
+      const verdictEl = document.querySelector(".flip-verdict-row");
+      if (state.studySession.isFlipped && hintEl) {
+        const newEl = createElement(`
+          <div class="flip-verdict-row">
+            <button class="verdict-btn verdict-missed" data-action="flip-missed">
+              <span aria-hidden="true">✗</span> Missed it
+            </button>
+            <button class="verdict-btn verdict-got" data-action="flip-got-it">
+              <span aria-hidden="true">✓</span> Got it
+            </button>
+          </div>`);
+        hintEl.parentNode.replaceChild(newEl, hintEl);
+      } else if (!state.studySession.isFlipped && verdictEl) {
+        const newEl = createElement(`<div class="flip-hint">Tap the card to reveal the answer</div>`);
+        verdictEl.parentNode.replaceChild(newEl, verdictEl);
+      }
+    } else {
+      render();
+    }
   }
 
   async function advanceStudy(result) {
