@@ -257,3 +257,28 @@ All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: 
 | Set name | 30 characters |
 | Display name | 30 characters |
 | Card term / definition | 5,000 characters (soft warning) |
+
+---
+
+## Walkthrough (`.wt-*`)
+
+- Backdrop: `position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); pointer-events: none`
+- Spotlight: `.wt-spotlight` — `box-shadow: 0 0 0 9999px rgba(0,0,0,0.6)`, `border-radius: 10px`, CSS transitions for smooth movement
+- Tooltip: `.wt-tooltip` — `background: --bg-secondary`, `border: 1px solid --border`, `border-radius: 14px`, `padding: 20px`, max-width 340px, z-index 1002
+- Progress bar track: `height: 3px`, `background: --bg-tertiary`; fill: `background: --accent`
+- Auto-progression: 7 seconds per step, animates via `requestAnimationFrame`
+- Z-index stack: backdrop 1000, spotlight 1001, tooltip 1002
+
+## Shortcuts Overlay
+
+- Reuses `.modal-backdrop` + `.modal` patterns
+- `.shortcuts-modal`: `width: min(520px, 100%)`
+- `.shortcut-group`: uppercase label rows, `font-size: 0.82rem`, `color: --text-secondary`
+
+## Homepage Demo (`.landing-demo`)
+
+- Centered card flip animation between hero and feature grid
+- `.landing-demo__card`: `width: min(320px, 100%)`, `height: 180px`, `perspective: 1000px`
+- `.landing-demo__inner`: `animation: demo-flip 5s ease-in-out infinite`
+- Front face: `background: --bg-secondary`; back face: `background: --accent-subtle`, `border-color: --accent-border`
+- Respects `prefers-reduced-motion` (animation disabled)
