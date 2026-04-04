@@ -53,6 +53,9 @@
         </div>
         <div class="auth-divider"><span>or</span></div>
         <p class="auth-footer">Don't have an account? <a href="/carded/signup" style="color:var(--accent-hover);text-decoration:underline;font-weight:600">Sign up</a></p>
+        <p class="auth-footer" style="margin-top:8px">
+          <button id="local-mode-btn" type="button" class="text-link-btn">Use without an account</button>
+        </p>
       </section>
     </main>
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
@@ -68,6 +71,15 @@
             : "Sign-in was cancelled. Please try again.";
           window.CardedAuth.showToast(message);
         }
+        var localBtn = document.getElementById("local-mode-btn");
+        if (localBtn) {
+          localBtn.addEventListener("click", function () {
+            window.CardedAuthGuard.enterLocalMode();
+            var onboardingDone = window.CardedUtils.safeGet("carded_onboarding_complete");
+            window.CardedUtils.redirectTo(onboardingDone ? window.BASE_PATH + "/library" : window.BASE_PATH + "/setup", null, true);
+          });
+        }
+
         document.querySelectorAll("[data-oauth]").forEach(function (button) {
           button.addEventListener("click", async function () {
             try {
