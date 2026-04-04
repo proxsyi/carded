@@ -34,6 +34,7 @@
     <script src="/carded/db.js?v=4.0.0" defer></script>
     <script src="/carded/auth.js?v=4.0.0" defer></script>
     <script src="/carded/supabase-db.js?v=4.0.0" defer></script>
+    <script src="/carded/shortcuts.js?v=4.0.0" defer></script>
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -205,8 +206,7 @@
             <div class="panel stack">
               <h2 style="margin:0 0 4px">Walkthrough</h2>
               <p class="meta-copy" style="margin:0 0 12px">Replay the interactive tour of Carded.</p>
-              <button class="ghost-button" id="show-walkthrough-btn" type="button" disabled style="align-self:flex-start;opacity:0.5">Show walkthrough again</button>
-              <p class="meta-copy" style="margin:4px 0 0">Coming in a future update.</p>
+              <button class="ghost-button" id="show-walkthrough-btn" type="button" style="align-self:flex-start">Show walkthrough again</button>
             </div>
 
           </div><!-- /tab-preferences -->
@@ -769,6 +769,15 @@
             markThemeSelected(currentTheme);
           });
         });
+
+        // Show walkthrough again
+        var wtBtn = document.getElementById("show-walkthrough-btn");
+        if (wtBtn) {
+          wtBtn.addEventListener("click", function () {
+            try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+            window.location.assign(window.BASE_PATH + "/library");
+          });
+        }
 
         // ── Data tab ───────────────────────────────────────────────────────────
         var statsLoaded = false;

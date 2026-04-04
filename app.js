@@ -1719,6 +1719,19 @@
       return;
     }
 
+    if (event.key.toLowerCase() === "f" && state.route.view === "home") {
+      event.preventDefault();
+      promptCreateFolder();
+      return;
+    }
+
+    if (event.key === "/" && state.route.view === "home") {
+      event.preventDefault();
+      const searchEl = document.getElementById("library-search");
+      if (searchEl) searchEl.focus();
+      return;
+    }
+
     const draggable = target instanceof HTMLElement ? target.closest("[data-set-tile], [data-card-row]") : null;
     if (!draggable) return;
 
