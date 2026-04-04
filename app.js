@@ -30,7 +30,7 @@
     keyboardMove: null,
     modal: null,
     toastTimer: null,
-    learnSession: null,
+    quizSession: null,
     studySession: null,
   };
 
@@ -275,6 +275,7 @@
       incorrectCount: progress ? (progress.incorrect_count || 0) : 0,
       lastSeen: progress ? toMillis(progress.last_seen) : null,
       box: Math.max(1, Math.min(3, (progress && progress.repetitions ? progress.repetitions : 0) + 1)),
+      points: progress ? Math.max(0, Math.min(10, progress.points || 0)) : 0,
     };
   }
 
@@ -372,6 +373,7 @@
       incorrect_count: card.incorrectCount || 0,
       last_seen: toIso(card.lastSeen),
       updated_at: nowIso(),
+      points: Math.max(0, Math.min(10, card.points || 0)),
     };
   }
 
@@ -630,19 +632,22 @@
     const setId = params.get("set");
     const mode = params.get("mode");
 
+    const dir = params.get("dir") || "term-definition";
+    const reviewOnly = params.get("review") === "1";
+
     if (path === window.BASE_PATH + "/study" && setId) {
-      if (mode === "learn") {
-        state.route = { view: "learn", setId: setId };
-        initLearnSession(setId);
+      if (mode === "quiz") {
+        state.route = { view: "quiz", setId: setId, quizDir: dir, reviewOnly: reviewOnly };
+        initQuizSession(setId, { direction: dir, reviewOnly: reviewOnly });
       } else {
-        state.route = { view: "study", setId: setId };
+        // flip mode (default, also handles legacy "study" mode)
+        state.route = { view: "flip", setId: setId, reviewOnly: reviewOnly };
         const savedSession = loadSavedStudySession(setId);
-        if (savedSession && savedSession.currentIndex > 0) {
-          // Auto-resume — initStudySession handles it
+        if (savedSession && savedSession.currentIndex > 0 && savedSession.mode === "flip" && savedSession.reviewOnly === reviewOnly) {
           initStudySession(setId, savedSession.shuffle, savedSession);
           state.studySession.resumed = true;
         } else {
-          initStudySession(setId);
+          initStudySession(setId, false, null, reviewOnly);
         }
       }
     } else if (path === window.BASE_PATH + "/library" && setId) {
@@ -663,11 +668,16 @@
     return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", params);
   }
 
-  function buildStudyHref(setId, mode) {
-    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", {
-      set: setId,
-      mode: mode === "learn" ? "learn" : "study",
-    });
+  function buildStudyHref(setId, options) {
+    const params = { set: setId };
+    if (options && options.mode === "quiz") {
+      params.mode = "quiz";
+      if (options.dir) params.dir = options.dir;
+    } else {
+      params.mode = "flip";
+    }
+    if (options && options.reviewOnly) params.review = "1";
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", params);
   }
 
   function navigateToLibrary(options, replace) {
@@ -680,8 +690,8 @@
     window.location.assign(href);
   }
 
-  function navigateToStudy(setId, mode) {
-    window.location.assign(buildStudyHref(setId, mode));
+  function navigateToStudy(setId, options) {
+    window.location.assign(buildStudyHref(setId, options));
   }
 
   function render() {
@@ -715,11 +725,11 @@
       case "set":
         renderSetView(state.route.setId);
         break;
-      case "study":
-        renderStudyView(state.route.setId);
+      case "flip":
+        renderFlipView(state.route.setId);
         break;
-      case "learn":
-        renderLearnView(state.route.setId);
+      case "quiz":
+        renderQuizView(state.route.setId);
         break;
       default:
         renderHomeView();
@@ -852,7 +862,6 @@
     const folder = set.folderId ? getFolder(set.folderId) : null;
     const cards = getCardsForSet(set.id);
     const stats = getSetStats(set.id);
-    const canLearn = cards.length >= 2;
 
     els.app.appendChild(createElement(`
       <section class="set-layout">
@@ -881,8 +890,7 @@
           </div>
           <div class="set-toolbar">
             <button class="ghost-button" data-action="export-set" data-set-id="${set.id}">Export .txt</button>
-            <button class="ghost-button" data-action="start-study" data-set-id="${set.id}" ${cards.length ? "" : "disabled"}>Study mode</button>
-            <button class="button" data-action="start-learn" data-set-id="${set.id}" ${canLearn ? "" : "disabled"}>Learn mode</button>
+            <button class="button" data-action="show-study-modal" data-set-id="${set.id}" ${cards.length ? "" : "disabled"}>Study</button>
             <button class="danger-button" data-action="delete-set" data-set-id="${set.id}">Delete set</button>
           </div>
         </div>
@@ -963,10 +971,9 @@
     `));
   }
 
-  function renderStudyView(setId) {
+  function renderFlipView(setId) {
     const set = getSet(setId);
     if (!set) {
-      // Set not found — show a message instead of silently redirecting
       els.app.appendChild(createElement(`
         <section class="empty-state">
           <p>Set not found.</p>
@@ -980,12 +987,14 @@
 
     const session = state.studySession;
     if (!session) {
-      // No cards in set
       els.app.appendChild(createElement(`
         <section class="empty-state">
-          <p>No cards to study yet!</p>
+          <p>${state.route.reviewOnly ? "No cards need review — you've got them all!" : "No cards to study yet!"}</p>
           <div class="empty-state__actions">
-            <a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>
+            ${state.route.reviewOnly
+              ? `<button class="button" data-action="show-study-modal" data-set-id="${setId}">Try a full session</button>`
+              : `<a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>`
+            }
           </div>
         </section>
       `));
@@ -993,12 +1002,11 @@
     }
 
     if (session.resumed) {
-      // Show a brief "resumed" indicator (clear after one render)
       delete session.resumed;
     }
 
     if (session.complete) {
-      els.app.appendChild(createElement(renderStudyComplete(set, session)));
+      els.app.appendChild(createElement(renderSessionComplete(set, session, "flip")));
       return;
     }
 
@@ -1012,24 +1020,23 @@
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Study" }
+          { label: state.route.reviewOnly ? "Review" : "Flip" }
         ])}
         <div class="session-toolbar">
           <div class="control-row">
-            <button class="pill-button ${session.shuffle ? "active" : ""}" data-action="toggle-study-shuffle">Shuffle remaining</button>
+            <button class="pill-button ${session.shuffle ? "active" : ""}" data-action="toggle-study-shuffle">Shuffle</button>
             <button class="pill-button" data-action="toggle-study-direction">
-              ${session.direction === "term-definition" ? "Term → Definition" : "Definition → Term"}
+              ${session.direction === "term-definition" ? "Term → Def" : "Def → Term"}
             </button>
           </div>
           <div class="meta-inline">
-            <span>${session.index + 1}/${session.deck.length}</span>
-            <span>${session.isFlipped ? "Answer shown" : "Prompt side"}</span>
+            <span>${session.index + 1} / ${session.deck.length}</span>
           </div>
         </div>
         <div class="progress" aria-hidden="true">
-          <div class="progress__bar" style="width:${((session.index + 1) / session.deck.length) * 100}%"></div>
+          <div class="progress__bar" style="width:${((session.index) / session.deck.length) * 100}%"></div>
         </div>
-        <div class="session-card ${session.flashClass || ""}" role="region" aria-live="polite">
+        <div class="session-card" role="region" aria-live="polite">
           <button class="flip-card ${session.isFlipped ? "is-flipped" : ""}" data-action="flip-study-card" aria-label="Flip card">
             <span class="flip-face front">
               <span class="flip-label">${termFirst ? "Term" : "Definition"}</span>
@@ -1041,135 +1048,146 @@
             </span>
           </button>
         </div>
-        <div class="session-toolbar">
-          <button class="ghost-button" data-action="study-prev" ${session.index === 0 ? "disabled" : ""}>Previous</button>
-          <button class="button" data-action="study-next">${session.index + 1 === session.deck.length ? "Finish deck" : "Next"}</button>
-        </div>
+        ${session.isFlipped ? `
+          <div class="flip-verdict-row">
+            <button class="verdict-btn verdict-missed" data-action="flip-missed">
+              <span aria-hidden="true">✗</span> Missed it
+            </button>
+            <button class="verdict-btn verdict-got" data-action="flip-got-it">
+              <span aria-hidden="true">✓</span> Got it
+            </button>
+          </div>
+        ` : `
+          <div class="flip-hint">Tap the card to reveal the answer</div>
+        `}
       </section>
     `));
   }
 
-  function renderLearnView(setId) {
+  function renderQuizView(setId) {
     const set = getSet(setId);
-    const session = state.learnSession;
-    if (!set || !session) {
-      navigateToLibrary({ setId: setId }, true);
+    if (!set) {
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>Set not found.</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.BASE_PATH}/library">Back to library</a>
+          </div>
+        </section>
+      `));
+      return;
+    }
+
+    const session = state.quizSession;
+    if (!session) {
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>${state.route.reviewOnly ? "No cards need review — you've got them all!" : "Not enough cards for quiz mode (need at least 4)."}</p>
+          <div class="empty-state__actions">
+            <button class="button" data-action="show-study-modal" data-set-id="${setId}">Choose another mode</button>
+          </div>
+        </section>
+      `));
       return;
     }
 
     if (session.complete) {
-      els.app.appendChild(createElement(renderLearnSummary(set, session)));
+      els.app.appendChild(createElement(renderSessionComplete(set, session, "quiz")));
       return;
     }
 
-    const question = session.currentQuestion;
+    const q = session.currentQuestion;
     els.app.appendChild(createElement(`
-      <section class="learn-shell">
+      <section class="session-shell">
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Learn" }
+          { label: state.route.reviewOnly ? "Review Quiz" : "Quiz" }
         ])}
         <div class="session-toolbar">
           <div class="meta-inline">
-            <span>${session.answered + 1}/${session.goal}</span>
-            <span>Score ${session.correctAnswers}/${Math.max(1, session.answered)}</span>
+            <span>${session.index + 1} / ${session.deck.length}</span>
+            <span>${q.direction === "term-definition" ? "Term → Def" : "Def → Term"}</span>
           </div>
-          <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
+          <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Exit</button>
         </div>
         <div class="progress" aria-hidden="true">
-          <div class="progress__bar" style="width:${(session.answered / session.goal) * 100}%"></div>
+          <div class="progress__bar" style="width:${(session.index / session.deck.length) * 100}%"></div>
         </div>
         <div class="session-card ${session.feedbackClass || ""}" role="region" aria-live="polite">
           <div class="flip-face">
-            <span class="session-caption">${question.direction === "term-definition" ? "Pick the definition" : "Pick the term"}</span>
-            <h2>${escapeHtml(question.prompt)}</h2>
+            <span class="flip-label">${q.direction === "term-definition" ? "Term" : "Definition"}</span>
+            <p class="flip-content ${q.direction === "term-definition" ? "term" : ""}">${escapeHtml(q.prompt)}</p>
           </div>
         </div>
-        <div class="choices">
-          ${question.choices.map((choice) => `
+        <div class="quiz-grid">
+          ${q.choices.map((choice, i) => `
             <button
-              class="ghost-button choice-button ${getChoiceClass(session, choice)}"
-              data-action="answer-choice"
-              data-card-id="${question.card.id}"
+              class="quiz-choice ${getQuizChoiceClass(session, choice)}"
+              data-action="answer-quiz"
+              data-card-id="${q.card.id}"
               data-choice-id="${choice.id}"
               ${session.pendingNext ? "disabled" : ""}
-            >${escapeHtml(choice.label)}</button>
+            >
+              <span class="quiz-choice__num">${i + 1}</span>
+              <span class="quiz-choice__label">${escapeHtml(choice.label)}</span>
+            </button>
           `).join("")}
         </div>
-        <div class="feedback">${renderLearnFeedback(session)}</div>
       </section>
     `));
   }
 
-  function renderStudyComplete(set, session) {
+  function renderSessionComplete(set, session, mode) {
+    const correct = session.results ? session.results.filter((r) => r.correct).length : 0;
+    const total = session.results ? session.results.length : session.deck ? session.deck.length : 0;
+    const missed = total - correct;
+    const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const mastered = session.results
+      ? session.results.filter((r) => r.correct && r.pointsAfter === 0).length
+      : 0;
+    const needsReview = session.results
+      ? session.results.filter((r) => r.pointsAfter > 0).length
+      : 0;
+    const hasMissed = missed > 0;
+    const reviewParam = hasMissed ? "" : "";
+
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Study complete" }
+          { label: "Session complete" }
         ])}
         <div class="summary-card">
-          <h2>Deck complete</h2>
-          <p>You reached the end of the deck. Start again, shuffle, or return to the set.</p>
-          <div class="summary-actions" style="margin-top:20px">
-            <button class="ghost-button" data-action="restart-study" data-mode="normal">Start over</button>
-            <button class="button" data-action="restart-study" data-mode="shuffle">Shuffle &amp; restart</button>
-            <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderLearnSummary(set, session) {
-    const percentage = Math.round((session.correctAnswers / Math.max(1, session.answered)) * 100);
-    return `
-      <section class="session-shell">
-        ${renderBreadcrumbs([
-          { href: buildLibraryHref(), label: "Home" },
-          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Round summary" }
-        ])}
-        <div class="summary-card" style="width:min(760px,100%)">
           <div class="summary-card__header">
             <div class="stack">
-              <h2>Round summary</h2>
-              <p>${session.correctAnswers}/${session.answered} correct in ${formatDuration(Date.now() - session.startedAt)}.</p>
+              <h2>Session complete!</h2>
+              <p>${set.name}</p>
             </div>
-            <div class="badge">${percentage}%</div>
+            <div class="badge">${pct}%</div>
           </div>
           <div class="summary-grid" style="margin:20px 0">
             <div class="stat-card">
-              <div class="meta-label">Score</div>
-              <div class="stat-value">${session.correctAnswers}/${session.answered}</div>
+              <div class="meta-label">Cards studied</div>
+              <div class="stat-value">${total}</div>
             </div>
             <div class="stat-card">
-              <div class="meta-label">Time taken</div>
-              <div class="stat-value">${formatDuration(Date.now() - session.startedAt)}</div>
+              <div class="meta-label">Correct</div>
+              <div class="stat-value correct-value">${correct}</div>
             </div>
             <div class="stat-card">
-              <div class="meta-label">Missed cards</div>
-              <div class="stat-value">${session.missedMap.size}</div>
+              <div class="meta-label">Missed</div>
+              <div class="stat-value missed-value">${missed}</div>
+            </div>
+            <div class="stat-card">
+              <div class="meta-label">Mastered</div>
+              <div class="stat-value">${mastered}</div>
             </div>
           </div>
-          ${session.missedMap.size ? `
-            <div class="stack">
-              <h3>Missed cards</h3>
-              <div class="list">
-                ${Array.from(session.missedMap.values()).map((entry) => `
-                  <div class="panel">
-                    <strong>${escapeHtml(entry.term)}</strong>
-                    <p>${escapeHtml(entry.definition)}</p>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          ` : `<p>No misses this round.</p>`}
-          <div class="summary-actions" style="margin-top:20px">
-            <button class="ghost-button" data-action="retry-missed" data-set-id="${set.id}" ${session.missedMap.size ? "" : "disabled"}>Retry missed cards only</button>
-            <button class="button" data-action="retry-all" data-set-id="${set.id}">Retry all cards</button>
+          <div class="summary-actions">
+            <button class="button" data-action="study-again" data-set-id="${set.id}" data-mode="${mode}">Study again</button>
+            ${hasMissed ? `<button class="ghost-button" data-action="review-missed" data-set-id="${set.id}" data-mode="${mode}">Review missed cards</button>` : ""}
             <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
           </div>
         </div>
@@ -1372,11 +1390,40 @@
           if (input) input.click();
         }
         break;
-      case "start-study":
-        navigateToStudy(target.dataset.setId, "study");
+      case "show-study-modal":
+        showStudyModeModal(target.dataset.setId);
         break;
-      case "start-learn":
-        navigateToStudy(target.dataset.setId, "learn");
+      case "start-flip-mode":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "flip" });
+        break;
+      case "show-quiz-direction":
+        state.modal.step = "select-quiz-direction";
+        renderModal();
+        break;
+      case "start-quiz-direction":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "quiz", dir: target.dataset.dir });
+        break;
+      case "show-review-mode":
+        state.modal.step = "select-review-mode";
+        renderModal();
+        break;
+      case "start-review-flip":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "flip", reviewOnly: true });
+        break;
+      case "start-review-quiz":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "quiz", dir: "mixed", reviewOnly: true });
         break;
       case "back-to-set":
         navigateToLibrary({ setId: target.dataset.setId });
@@ -1387,11 +1434,11 @@
           render();
         }
         break;
-      case "study-next":
-        advanceStudy(1);
+      case "flip-got-it":
+        advanceStudy("got-it");
         break;
-      case "study-prev":
-        advanceStudy(-1);
+      case "flip-missed":
+        advanceStudy("missed");
         break;
       case "toggle-study-shuffle":
         toggleStudyShuffle();
@@ -1403,22 +1450,44 @@
           render();
         }
         break;
-      case "answer-choice":
-        answerLearnChoice(target.dataset.cardId, target.dataset.choiceId);
+      case "answer-quiz":
+        answerQuizChoice(target.dataset.cardId, target.dataset.choiceId);
         break;
-      case "retry-missed":
-        initLearnSession(target.dataset.setId, { missedOnly: true });
-        render();
+      case "study-again": {
+        const studyAgainMode = target.dataset.mode;
+        if (studyAgainMode === "quiz") {
+          const route = state.route;
+          initQuizSession(target.dataset.setId, { direction: route.quizDir || "term-definition", reviewOnly: false });
+          render();
+        } else {
+          initStudySession(target.dataset.setId, false, null, false);
+          render();
+        }
         break;
-      case "retry-all":
-        await resetSetBoxes(target.dataset.setId);
-        initLearnSession(target.dataset.setId);
-        render();
+      }
+      case "review-missed": {
+        const reviewMode = target.dataset.mode;
+        if (reviewMode === "quiz") {
+          const setId = target.dataset.setId;
+          if (state.quizSession) {
+            const missedIds = new Set(state.quizSession.results.filter((r) => !r.correct).map((r) => r.cardId));
+            initQuizSession(setId, { direction: state.route.quizDir || "term-definition", reviewOnly: false, missedIds: missedIds });
+          } else {
+            initQuizSession(setId, { direction: "term-definition", reviewOnly: true });
+          }
+          render();
+        } else {
+          const setId = target.dataset.setId;
+          if (state.studySession) {
+            const missedIds = new Set(state.studySession.results.filter((r) => !r.correct).map((r) => r.cardId));
+            initStudySession(setId, false, null, false, missedIds);
+          } else {
+            initStudySession(setId, false, null, true);
+          }
+          render();
+        }
         break;
-      case "restart-study":
-        initStudySession(state.route.setId, target.dataset.mode === "shuffle");
-        render();
-        break;
+      }
       case "export-set":
         exportSet(target.dataset.setId);
         break;
@@ -1584,28 +1653,33 @@
 
     if (typingContext) return;
 
-    if (state.route.view === "study" && state.studySession) {
-      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+    if (state.route.view === "flip" && state.studySession && !state.studySession.complete) {
+      if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
-        advanceStudy(1);
-      } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+        if (!state.studySession.isFlipped) {
+          state.studySession.isFlipped = true;
+          render();
+        } else {
+          // Enter = Got it, Backspace = Missed it when flipped
+          advanceStudy("got-it");
+        }
+        return;
+      }
+      if (event.key === "Backspace") {
         event.preventDefault();
-        advanceStudy(-1);
-      } else if (event.key === " " || event.key === "Enter") {
-        event.preventDefault();
-        state.studySession.isFlipped = !state.studySession.isFlipped;
-        render();
+        if (state.studySession.isFlipped) advanceStudy("missed");
+        return;
       }
       return;
     }
 
-    if (state.route.view === "learn" && state.learnSession && /^[1-4]$/.test(event.key)) {
+    if (state.route.view === "quiz" && state.quizSession && !state.quizSession.pendingNext && /^[1-4]$/.test(event.key)) {
       event.preventDefault();
       const choiceIndex = Number(event.key) - 1;
-      const question = state.learnSession.currentQuestion;
+      const question = state.quizSession.currentQuestion;
       const choice = question?.choices?.[choiceIndex];
       if (choice) {
-        answerLearnChoice(question.card.id, choice.id);
+        answerQuizChoice(question.card.id, choice.id);
       }
       return;
     }
@@ -1667,7 +1741,7 @@
   }
 
   function handleEscapeNavigation() {
-    if (state.route.view === "study" || state.route.view === "learn") {
+    if (state.route.view === "flip" || state.route.view === "quiz") {
       navigateToLibrary({ setId: state.route.setId });
       return;
     }
@@ -1837,6 +1911,13 @@
         modalTriggerEl = null;
       }
       document.body.removeAttribute("aria-hidden");
+      return;
+    }
+
+    // Study mode modal — custom render
+    if (state.modal.type === "study-mode") {
+      els.modalRoot.innerHTML = renderStudyModeModal(state.modal);
+      els.appShell && els.appShell.setAttribute("aria-hidden", "true");
       return;
     }
 
@@ -2161,10 +2242,12 @@
     }
     window.CardedUtils.safeSet(STUDY_SESSION_KEY, JSON.stringify({
       setId: s.setId,
+      mode: "flip",
       cardOrder: s.deck.map((c) => c.id),
       currentIndex: s.index,
       shuffle: s.shuffle,
       direction: s.direction,
+      reviewOnly: s.reviewOnly || false,
       startedAt: s.startedAt || Date.now(),
     }));
   }
@@ -2185,8 +2268,13 @@
     }
   }
 
-  function initStudySession(setId, shuffle = false, resumeData = null) {
-    const cards = getCardsForSet(setId);
+  function initStudySession(setId, shuffle = false, resumeData = null, reviewOnly = false, missedIds = null) {
+    let cards = getCardsForSet(setId);
+    if (missedIds && missedIds.size > 0) {
+      cards = cards.filter((c) => missedIds.has(c.id));
+    } else if (reviewOnly) {
+      cards = cards.filter((c) => (c.points || 0) > 0);
+    }
     if (!cards.length) {
       state.studySession = null;
       return;
@@ -2197,9 +2285,10 @@
     let direction = "term-definition";
     const cardMap = new Map(cards.map((c) => [c.id, c]));
 
-    if (resumeData) {
+    if (resumeData && resumeData.cardOrder) {
       deck = resumeData.cardOrder.map((id) => cardMap.get(id)).filter(Boolean);
-      index = Math.min(resumeData.currentIndex, deck.length - 1);
+      if (!deck.length) deck = cards.slice();
+      index = Math.min(resumeData.currentIndex || 0, deck.length - 1);
       direction = resumeData.direction || "term-definition";
       shuffle = resumeData.shuffle || false;
     } else {
@@ -2215,27 +2304,52 @@
       shuffle,
       direction,
       complete: false,
+      reviewOnly,
       startedAt: (resumeData && resumeData.startedAt) || Date.now(),
+      results: [],
+      mode: "flip",
     };
     saveStudySessionState();
   }
 
-  async function advanceStudy(step) {
+  async function advanceStudy(result) {
     const session = state.studySession;
-    if (!session) return;
+    if (!session || session.complete) return;
 
-    if (step > 0 && session.index + 1 >= session.deck.length) {
+    const card = session.deck[session.index];
+
+    if (result === "got-it" || result === "missed") {
+      const isCorrect = result === "got-it";
+      const prevPoints = card.points || 0;
+      if (isCorrect) {
+        card.points = Math.max(0, prevPoints - 1);
+        card.correctCount = (card.correctCount || 0) + 1;
+      } else {
+        card.points = Math.min(10, prevPoints + 2);
+        card.incorrectCount = (card.incorrectCount || 0) + 1;
+      }
+      card.lastSeen = Date.now();
+      session.results.push({ cardId: card.id, correct: isCorrect, pointsAfter: card.points });
+      await persistProgress(card);
+    }
+
+    const isLast = session.index + 1 >= session.deck.length;
+    if (isLast && (result === "got-it" || result === "missed")) {
       session.complete = true;
       window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
-      await recordStudyCompletion(session.setId, 100);
+      const correct = session.results.filter((r) => r.correct).length;
+      const pct = Math.round((correct / Math.max(1, session.results.length)) * 100);
+      await recordStudyCompletion(session.setId, pct);
       render();
       return;
     }
 
-    session.index = Math.max(0, Math.min(session.deck.length - 1, session.index + step));
-    session.isFlipped = false;
-    saveStudySessionState();
-    render();
+    if (result === "got-it" || result === "missed") {
+      session.index += 1;
+      session.isFlipped = false;
+      saveStudySessionState();
+      render();
+    }
   }
 
   function toggleStudyShuffle() {
@@ -2251,62 +2365,69 @@
     render();
   }
 
-  function initLearnSession(setId, options = {}) {
-    const cards = options.missedOnly && state.learnSession
-      ? Array.from(state.learnSession.missedMap.values())
-      : getCardsForSet(setId);
-
-    if (cards.length < 2) {
-      state.learnSession = null;
+  function initQuizSession(setId, options = {}) {
+    let cards = getCardsForSet(setId);
+    if (options.missedIds && options.missedIds.size > 0) {
+      cards = cards.filter((c) => options.missedIds.has(c.id));
+    } else if (options.reviewOnly) {
+      cards = cards.filter((c) => (c.points || 0) > 0);
+    }
+    if (cards.length < 4) {
+      state.quizSession = null;
       return;
     }
 
-    state.learnSession = {
+    const direction = options.direction || "term-definition";
+    const deck = cards.slice();
+    shuffleArray(deck);
+
+    state.quizSession = {
       setId,
-      pool: cards.map((card) => ({ ...card })),
-      goal: Math.max(cards.length * 2, 10),
-      answered: 0,
-      correctAnswers: 0,
-      startedAt: Date.now(),
-      currentQuestion: null,
-      pendingNext: false,
-      feedbackText: "",
-      feedbackClass: "",
+      deck,
+      index: 0,
+      direction,
+      reviewOnly: options.reviewOnly || false,
       complete: false,
-      missedMap: new Map(),
+      startedAt: Date.now(),
+      pendingNext: false,
+      feedbackClass: "",
+      results: [],
+      currentQuestion: null,
     };
-    nextLearnQuestion();
+    nextQuizQuestion();
   }
 
-  function nextLearnQuestion() {
-    const session = state.learnSession;
+  function nextQuizQuestion() {
+    const session = state.quizSession;
     if (!session) return;
 
-    if (session.answered >= session.goal) {
+    if (session.index >= session.deck.length) {
       session.complete = true;
-      recordStudyCompletion(session.setId, Math.round((session.correctAnswers / Math.max(1, session.answered)) * 100));
+      const correct = session.results.filter((r) => r.correct).length;
+      recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100));
       return;
     }
 
-    const card = weightedPick(session.pool);
-    const direction = Math.random() > 0.5 ? "term-definition" : "definition-term";
-    const choices = buildChoices(card, session.pool, direction);
+    const card = session.deck[session.index];
+    const allCards = getCardsForSet(session.setId);
+    let dir = session.direction;
+    if (dir === "mixed") dir = Math.random() > 0.5 ? "term-definition" : "definition-term";
 
+    const choices = buildQuizChoices(card, allCards, dir);
     session.currentQuestion = {
       card,
-      direction,
-      prompt: direction === "term-definition" ? card.term : card.definition,
+      direction: dir,
+      prompt: dir === "term-definition" ? card.term : card.definition,
       choices,
       correctChoiceId: card.id,
       selectedChoiceId: null,
     };
-    session.feedbackText = "";
     session.feedbackClass = "";
     session.pendingNext = false;
   }
 
-  async function answerLearnChoice(cardId, choiceId) {
-    const session = state.learnSession;
+  async function answerQuizChoice(cardId, choiceId) {
+    const session = state.quizSession;
     if (!session || session.pendingNext) return;
 
     const question = session.currentQuestion;
@@ -2315,51 +2436,175 @@
 
     const isCorrect = choiceId === question.correctChoiceId;
     session.pendingNext = true;
-    session.answered += 1;
     question.selectedChoiceId = choiceId;
+    session.feedbackClass = isCorrect ? "flash-correct" : "flash-incorrect";
 
+    const prevPoints = card.points || 0;
     if (isCorrect) {
-      session.correctAnswers += 1;
-      session.feedbackText = "Correct";
-      session.feedbackClass = "flash-correct";
-      card.correctCount += 1;
-      card.box = Math.min(3, card.box + 1);
+      card.points = Math.max(0, prevPoints - 1);
+      card.correctCount = (card.correctCount || 0) + 1;
     } else {
-      session.feedbackText = `Incorrect. Correct answer: ${question.choices.find((choice) => choice.id === question.correctChoiceId).label}`;
-      session.feedbackClass = "flash-incorrect";
-      card.incorrectCount += 1;
-      card.box = 1;
-      session.missedMap.set(card.id, { term: card.term, definition: card.definition });
+      card.points = Math.min(10, prevPoints + 2);
+      card.incorrectCount = (card.incorrectCount || 0) + 1;
     }
-
     card.lastSeen = Date.now();
+    session.results.push({ cardId: card.id, correct: isCorrect, pointsAfter: card.points });
     await persistProgress(card);
-    const poolCard = session.pool.find((item) => item.id === card.id);
-    if (poolCard) {
-      poolCard.correctCount = card.correctCount;
-      poolCard.incorrectCount = card.incorrectCount;
-      poolCard.box = card.box;
-      poolCard.lastSeen = card.lastSeen;
-    }
-
-    setTimeout(() => {
-      session.pendingNext = false;
-      nextLearnQuestion();
-      render();
-    }, isCorrect ? 500 : 1500);
 
     render();
+
+    setTimeout(async () => {
+      session.index += 1;
+      session.pendingNext = false;
+      nextQuizQuestion();
+      if (session.complete) {
+        const correct = session.results.filter((r) => r.correct).length;
+        await recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100));
+      }
+      render();
+    }, isCorrect ? 500 : 1200);
   }
 
-  function buildChoices(card, pool, direction) {
+  function buildQuizChoices(card, pool, direction) {
     const others = pool.filter((item) => item.id !== card.id);
     shuffleArray(others);
-    const choices = [card].concat(others.slice(0, Math.min(3, others.length)));
+    const choices = [card].concat(others.slice(0, 3));
     shuffleArray(choices);
     return choices.map((item) => ({
       id: item.id,
       label: direction === "term-definition" ? item.definition : item.term,
     }));
+  }
+
+  function getQuizChoiceClass(session, choice) {
+    if (!session.pendingNext) return "";
+    if (choice.id === session.currentQuestion.correctChoiceId) return "correct";
+    if (choice.id === session.currentQuestion.selectedChoiceId) return "incorrect";
+    return "";
+  }
+
+  function showStudyModeModal(setId) {
+    const cards = getCardsForSet(setId);
+    const reviewCards = cards.filter((c) => (c.points || 0) > 0);
+    const canQuiz = cards.length >= 4;
+    const hasReview = reviewCards.length > 0;
+    const canReviewQuiz = reviewCards.length >= 4;
+
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      type: "study-mode",
+      setId,
+      step: "select-mode",
+      cardCount: cards.length,
+      reviewCount: reviewCards.length,
+      canQuiz,
+      hasReview,
+      canReviewQuiz,
+    };
+    renderModal();
+  }
+
+  function renderStudyModeModal(modal) {
+    const { setId, step, canQuiz, hasReview, reviewCount, canReviewQuiz } = modal;
+
+    if (step === "select-quiz-direction") {
+      return `
+        <div class="modal-backdrop" aria-hidden="false">
+          <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 id="modal-title">Quiz direction</h2>
+            <p style="color:var(--text-secondary);margin-bottom:16px">What do you want to see as the prompt?</p>
+            <div class="mode-options">
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="term-definition" data-set-id="${setId}" title="You'll see the term and choose the matching definition">
+                <span class="mode-option__icon">→</span>
+                <div>
+                  <div class="mode-option__label">Term → Definition</div>
+                  <div class="mode-option__desc">See the term, pick the definition</div>
+                </div>
+              </button>
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="definition-term" data-set-id="${setId}" title="You'll see the definition and choose the matching term">
+                <span class="mode-option__icon">←</span>
+                <div>
+                  <div class="mode-option__label">Definition → Term</div>
+                  <div class="mode-option__desc">See the definition, pick the term</div>
+                </div>
+              </button>
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="mixed" data-set-id="${setId}" title="Randomly switches between both directions">
+                <span class="mode-option__icon">↔</span>
+                <div>
+                  <div class="mode-option__label">Both (mixed)</div>
+                  <div class="mode-option__desc">Randomly alternates directions</div>
+                </div>
+              </button>
+            </div>
+            <div class="modal__actions" style="margin-top:16px">
+              <button class="ghost-button" data-action="close-modal">Cancel</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    if (step === "select-review-mode") {
+      return `
+        <div class="modal-backdrop" aria-hidden="false">
+          <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 id="modal-title">Needs Review — ${reviewCount} card${reviewCount !== 1 ? "s" : ""}</h2>
+            <p style="color:var(--text-secondary);margin-bottom:16px">How do you want to study them?</p>
+            <div class="mode-options">
+              <button class="mode-option" data-action="start-review-flip" data-set-id="${setId}">
+                <span class="mode-option__icon">🃏</span>
+                <div>
+                  <div class="mode-option__label">Flip Mode</div>
+                  <div class="mode-option__desc">Flip cards, mark Got it or Missed it</div>
+                </div>
+              </button>
+              <button class="mode-option ${canReviewQuiz ? "" : "mode-option--disabled"}" data-action="start-review-quiz" data-set-id="${setId}" ${canReviewQuiz ? "" : "disabled"}>
+                <span class="mode-option__icon">🎯</span>
+                <div>
+                  <div class="mode-option__label">Quiz Mode</div>
+                  <div class="mode-option__desc">${canReviewQuiz ? "Multiple choice questions" : "Need at least 4 cards to review"}</div>
+                </div>
+              </button>
+            </div>
+            <div class="modal__actions" style="margin-top:16px">
+              <button class="ghost-button" data-action="close-modal">Cancel</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Default: select-mode
+    return `
+      <div class="modal-backdrop" aria-hidden="false">
+        <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <h2 id="modal-title">Choose study mode</h2>
+          <div class="mode-options">
+            <button class="mode-option" data-action="start-flip-mode" data-set-id="${setId}">
+              <span class="mode-option__icon">🃏</span>
+              <div>
+                <div class="mode-option__label">Flip Mode</div>
+                <div class="mode-option__desc">Flip cards and mark Got it or Missed it</div>
+              </div>
+            </button>
+            <button class="mode-option ${canQuiz ? "" : "mode-option--disabled"}" data-action="show-quiz-direction" data-set-id="${setId}" ${canQuiz ? "" : "disabled"}>
+              <span class="mode-option__icon">🎯</span>
+              <div>
+                <div class="mode-option__label">Quiz Mode</div>
+                <div class="mode-option__desc">${canQuiz ? "Multiple choice questions" : "Need at least 4 cards"}</div>
+              </div>
+            </button>
+            <button class="mode-option ${hasReview ? "" : "mode-option--disabled"}" data-action="show-review-mode" data-set-id="${setId}" ${hasReview ? "" : "disabled"}>
+              <span class="mode-option__icon">⚠️</span>
+              <div>
+                <div class="mode-option__label">Needs Review</div>
+                <div class="mode-option__desc">${hasReview ? `${reviewCount} card${reviewCount !== 1 ? "s" : ""} need practice` : "All cards mastered!"}</div>
+              </div>
+            </button>
+          </div>
+          <div class="modal__actions" style="margin-top:16px">
+            <button class="ghost-button" data-action="close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>`;
   }
 
   async function recordStudyCompletion(setId, percentage) {
@@ -2523,7 +2768,9 @@
 
   function weightedPick(cards) {
     const weighted = cards.flatMap((card) => {
-      const repeats = Math.max(1, 4 - (card.box || 1)) + Math.min(card.incorrectCount || 0, 3);
+      const pts = card.points || 0;
+      // Higher points = more repetitions (1 to 3 extra)
+      const repeats = 1 + Math.floor(pts / 4);
       return Array.from({ length: repeats }, () => card);
     });
     return weighted[Math.floor(Math.random() * weighted.length)];
@@ -2645,15 +2892,15 @@
   let touchStartX = 0;
 
   function handleTouchStart(event) {
-    if (state.route.view !== "study") return;
+    if (state.route.view !== "flip") return;
     touchStartX = event.changedTouches[0]?.clientX || 0;
   }
 
   function handleTouchEnd(event) {
-    if (state.route.view !== "study" || !state.studySession) return;
+    if (state.route.view !== "flip" || !state.studySession || !state.studySession.isFlipped) return;
     const touchEndX = event.changedTouches[0]?.clientX || 0;
     const diff = touchEndX - touchStartX;
-    if (Math.abs(diff) < 40) return;
-    advanceStudy(diff < 0 ? 1 : -1);
+    if (Math.abs(diff) < 60) return;
+    advanceStudy(diff < 0 ? "got-it" : "missed");
   }
 })();
