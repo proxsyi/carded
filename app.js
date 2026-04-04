@@ -2339,7 +2339,12 @@
       window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
       const correct = session.results.filter((r) => r.correct).length;
       const pct = Math.round((correct / Math.max(1, session.results.length)) * 100);
-      await recordStudyCompletion(session.setId, pct);
+      await recordStudyCompletion(session.setId, pct, {
+        mode: "flip",
+        totalCards: session.results.length,
+        correctCount: correct,
+        startedAt: session.startedAt,
+      });
       render();
       return;
     }
@@ -2404,7 +2409,12 @@
     if (session.index >= session.deck.length) {
       session.complete = true;
       const correct = session.results.filter((r) => r.correct).length;
-      recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100));
+      recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100), {
+        mode: "quiz",
+        totalCards: session.results.length,
+        correctCount: correct,
+        startedAt: session.startedAt,
+      });
       return;
     }
 
@@ -2459,7 +2469,12 @@
       nextQuizQuestion();
       if (session.complete) {
         const correct = session.results.filter((r) => r.correct).length;
-        await recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100));
+        await recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100), {
+          mode: "quiz",
+          totalCards: session.results.length,
+          correctCount: correct,
+          startedAt: session.startedAt,
+        });
       }
       render();
     }, isCorrect ? 500 : 1200);
@@ -2607,7 +2622,7 @@
       </div>`;
   }
 
-  async function recordStudyCompletion(setId, percentage) {
+  async function recordStudyCompletion(setId, percentage, sessionMeta) {
     const set = getSet(setId);
     if (!set) return;
     set.lastStudied = Date.now();
@@ -2632,10 +2647,31 @@
     }
     state.stats.lastStudiedDate = today;
     state.stats.totalSessions = (state.stats.totalSessions || 0) + 1;
-    state.stats.totalCardsReviewed = (state.stats.totalCardsReviewed || 0) + getCardsForSet(setId).length;
+
+    // Count cards studied this session
+    const meta = sessionMeta || {};
+    const totalCards = meta.totalCards || getCardsForSet(setId).length;
+    const correctCount = meta.correctCount || 0;
+    state.stats.totalCardsReviewed = (state.stats.totalCardsReviewed || 0) + totalCards;
 
     await persistEntity("sets", "update", setToRow(set));
     await persistStats();
+
+    // Save study session record
+    if (state.userId) {
+      const sessionRow = {
+        id: crypto.randomUUID(),
+        user_id: state.userId,
+        set_id: setId,
+        mode: meta.mode || "flip",
+        total_cards: totalCards,
+        correct_count: correctCount,
+        wrong_count: totalCards - correctCount,
+        started_at: toIso(meta.startedAt || Date.now()),
+        completed_at: nowIso(),
+      };
+      await persistEntity("study_sessions", "insert", sessionRow);
+    }
   }
 
   function getChoiceClass(session, choice) {

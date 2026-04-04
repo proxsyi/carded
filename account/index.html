@@ -19,6 +19,8 @@
     <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <!-- Cropper.js for custom profile picture cropping -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" crossorigin="anonymous">
+    <!-- Chart.js for stats charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
     <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
@@ -210,14 +212,40 @@
           <!-- ── Data tab ────────────────────────────────────────────────────── -->
           <div id="tab-data" role="tabpanel" class="stack hidden" data-panel="data">
 
-            <!-- Stats -->
+            <!-- Stats summary -->
             <div class="panel stack">
-              <h2 style="margin:0 0 16px">Usage stats</h2>
+              <h2 style="margin:0 0 16px">Stats</h2>
               <div class="summary-grid" id="stats-grid">
-                <div class="stat-card"><div class="meta-label">Cards reviewed</div><div id="stats-reviewed" class="stat-value">—</div></div>
-                <div class="stat-card"><div class="meta-label">Study sessions</div><div id="stats-sessions" class="stat-value">—</div></div>
-                <div class="stat-card"><div class="meta-label">Current streak</div><div id="stats-current-streak" class="stat-value">—</div></div>
-                <div class="stat-card"><div class="meta-label">Longest streak</div><div id="stats-longest-streak" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">📚 Total reviewed</div><div id="stats-reviewed" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">🔥 Streak</div><div id="stats-streak" class="stat-value">—</div><div id="stats-streak-best" class="meta-label" style="font-size:0.75rem;margin-top:2px"></div></div>
+                <div class="stat-card"><div class="meta-label">✅ Mastered</div><div id="stats-mastered" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">📊 Accuracy</div><div id="stats-accuracy" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">🔄 Needs review</div><div id="stats-needs-review" class="stat-value">—</div></div>
+                <div class="stat-card"><div class="meta-label">Sessions</div><div id="stats-sessions" class="stat-value">—</div></div>
+              </div>
+            </div>
+
+            <!-- Activity chart -->
+            <div class="panel stack">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                <h2 style="margin:0">Activity</h2>
+                <div class="chart-range-btns" role="group" aria-label="Time range">
+                  <button class="pill-button active" data-range="30" type="button">30d</button>
+                  <button class="pill-button" data-range="7" type="button">7d</button>
+                  <button class="pill-button" data-range="0" type="button">All</button>
+                </div>
+              </div>
+              <div id="stats-chart-wrap" style="position:relative;height:180px">
+                <canvas id="stats-chart" aria-label="Study activity chart"></canvas>
+                <p id="stats-chart-empty" class="meta-copy" style="display:none;text-align:center;margin-top:40px">No study sessions yet.</p>
+              </div>
+            </div>
+
+            <!-- Per-set breakdown -->
+            <div class="panel stack">
+              <h2 style="margin:0 0 12px">Sets</h2>
+              <div id="stats-sets-list">
+                <p class="meta-copy">Loading…</p>
               </div>
             </div>
 
@@ -716,17 +744,221 @@
         // ── Data tab ───────────────────────────────────────────────────────────
         var statsLoaded = false;
 
+        var activeChart = null;
+        var currentRange = 30;
+        var cachedSessions = [];
+
         async function loadStats(sess) {
           statsLoaded = true;
           try {
-            var stats = await window.CardedSupabaseDB.getOrCreateStats(sess.user.id);
-            document.getElementById("stats-reviewed").textContent = String(stats.total_cards_reviewed || 0);
-            document.getElementById("stats-sessions").textContent = String(stats.total_sessions || 0);
-            document.getElementById("stats-current-streak").textContent = String(stats.current_streak || 0);
-            document.getElementById("stats-longest-streak").textContent = String(stats.longest_streak || 0);
+            // Load from Dexie (local-first)
+            var userId = sess.user.id;
+            var userData = await window.CardedDB.getAllUserData(userId);
+            var progress = userData.progress || [];
+            var sets = userData.sets || [];
+            var cards = userData.cards || [];
+            var localStats = userData.stats || {};
+
+            // Aggregates from progress
+            var mastered = progress.filter(function (p) { return (p.points || 0) === 0 && p.last_seen; }).length;
+            var needsReview = progress.filter(function (p) { return (p.points || 0) > 0; }).length;
+            var totalCorrect = progress.reduce(function (acc, p) { return acc + (p.correct_count || 0); }, 0);
+            var totalWrong = progress.reduce(function (acc, p) { return acc + (p.incorrect_count || 0); }, 0);
+            var totalAnswers = totalCorrect + totalWrong;
+            var accuracy = totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : null;
+
+            // Supabase stats for streak/session count (authoritative)
+            var remoteStats = null;
+            try { remoteStats = await window.CardedSupabaseDB.getOrCreateStats(userId); } catch (_) {}
+
+            var currentStreak = (remoteStats && remoteStats.current_streak) || localStats.current_streak || 0;
+            var longestStreak = (remoteStats && remoteStats.longest_streak) || localStats.longest_streak || 0;
+            var totalReviewed = (remoteStats && remoteStats.total_cards_reviewed) || localStats.total_cards_reviewed || 0;
+            var totalSessions = (remoteStats && remoteStats.total_sessions) || localStats.total_sessions || 0;
+
+            document.getElementById("stats-reviewed").textContent = String(totalReviewed);
+            document.getElementById("stats-streak").textContent = String(currentStreak) + " day" + (currentStreak !== 1 ? "s" : "");
+            document.getElementById("stats-streak-best").textContent = "Best: " + longestStreak;
+            document.getElementById("stats-mastered").textContent = String(mastered);
+            document.getElementById("stats-accuracy").textContent = accuracy !== null ? accuracy + "%" : "—";
+            document.getElementById("stats-needs-review").textContent = String(needsReview);
+            document.getElementById("stats-sessions").textContent = String(totalSessions);
+
+            // Load sessions for chart
+            var sessions = await window.CardedDB.getStudySessions(userId);
+            cachedSessions = sessions;
+            renderChart(currentRange);
+            renderSetBreakdown(sets, cards, progress);
+
+            // Range buttons
+            document.querySelectorAll("[data-range]").forEach(function (btn) {
+              btn.addEventListener("click", function () {
+                document.querySelectorAll("[data-range]").forEach(function (b) { b.classList.remove("active"); });
+                btn.classList.add("active");
+                currentRange = parseInt(btn.dataset.range, 10);
+                renderChart(currentRange);
+              });
+            });
+
           } catch (error) {
             document.getElementById("stats-grid").innerHTML = '<p class="meta-copy">Failed to load stats.</p>';
           }
+        }
+
+        function renderChart(rangeDays) {
+          var wrap = document.getElementById("stats-chart-wrap");
+          var canvas = document.getElementById("stats-chart");
+          var empty = document.getElementById("stats-chart-empty");
+
+          if (!window.Chart) {
+            empty.textContent = "Chart unavailable offline.";
+            empty.style.display = "";
+            canvas.style.display = "none";
+            return;
+          }
+
+          // Filter sessions by range
+          var now = Date.now();
+          var cutoff = rangeDays > 0 ? now - rangeDays * 24 * 60 * 60 * 1000 : 0;
+          var filtered = cachedSessions.filter(function (s) {
+            return !s.completed_at || new Date(s.completed_at).getTime() >= cutoff;
+          });
+
+          if (filtered.length === 0) {
+            empty.style.display = "";
+            canvas.style.display = "none";
+            if (activeChart) { activeChart.destroy(); activeChart = null; }
+            return;
+          }
+
+          empty.style.display = "none";
+          canvas.style.display = "";
+
+          // Build daily buckets
+          var days = rangeDays > 0 ? rangeDays : 90;
+          var labels = [];
+          var cardsPerDay = [];
+          var accuracyPerDay = [];
+
+          for (var i = days - 1; i >= 0; i--) {
+            var d = new Date(now - i * 24 * 60 * 60 * 1000);
+            var dayStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+            labels.push(dayStr);
+
+            var dateKey = d.toISOString().slice(0, 10);
+            var daySessions = filtered.filter(function (s) {
+              return (s.completed_at || s.started_at || "").slice(0, 10) === dateKey;
+            });
+            var dayCards = daySessions.reduce(function (acc, s) { return acc + (s.total_cards || 0); }, 0);
+            var dayCorrect = daySessions.reduce(function (acc, s) { return acc + (s.correct_count || 0); }, 0);
+            var dayAcc = dayCards > 0 ? Math.round((dayCorrect / dayCards) * 100) : null;
+            cardsPerDay.push(dayCards);
+            accuracyPerDay.push(dayAcc);
+          }
+
+          // Theme colors from CSS variables
+          var style = getComputedStyle(document.documentElement);
+          var accent = style.getPropertyValue("--accent-primary").trim() || "#9d7cd8";
+          var correct = style.getPropertyValue("--correct").trim() || "#4ade80";
+          var textSecondary = style.getPropertyValue("--text-secondary").trim() || "#999";
+          var border = style.getPropertyValue("--border").trim() || "#333";
+
+          var chartData = {
+            labels: labels,
+            datasets: [
+              {
+                label: "Cards studied",
+                data: cardsPerDay,
+                borderColor: accent,
+                backgroundColor: accent + "33",
+                fill: true,
+                tension: 0.3,
+                yAxisID: "y",
+              },
+              {
+                label: "Accuracy %",
+                data: accuracyPerDay,
+                borderColor: correct,
+                backgroundColor: "transparent",
+                tension: 0.3,
+                yAxisID: "y2",
+                spanGaps: true,
+              },
+            ],
+          };
+
+          if (activeChart) { activeChart.destroy(); }
+          activeChart = new window.Chart(canvas, {
+            type: "line",
+            data: chartData,
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              plugins: {
+                legend: { labels: { color: textSecondary, font: { size: 11 } } },
+                tooltip: { bodyColor: textSecondary },
+              },
+              scales: {
+                x: { ticks: { color: textSecondary, maxRotation: 0, maxTicksLimit: 8 }, grid: { color: border + "44" } },
+                y: { position: "left", ticks: { color: textSecondary }, grid: { color: border + "44" }, min: 0 },
+                y2: { position: "right", ticks: { color: textSecondary, callback: function (v) { return v !== null ? v + "%" : ""; } }, grid: { display: false }, min: 0, max: 100 },
+              },
+            },
+          });
+        }
+
+        function renderSetBreakdown(sets, cards, progress) {
+          var container = document.getElementById("stats-sets-list");
+          if (!sets.length) {
+            container.innerHTML = '<p class="meta-copy">No sets yet.</p>';
+            return;
+          }
+
+          // Build per-set progress map
+          var progressByCard = new Map(progress.map(function (p) { return [p.card_id, p]; }));
+
+          var rows = sets.map(function (set) {
+            var setCards = cards.filter(function (c) { return c.set_id === set.id; });
+            var total = setCards.length;
+            var mastered = setCards.filter(function (c) {
+              var p = progressByCard.get(c.id);
+              return p && (p.points || 0) === 0 && p.last_seen;
+            }).length;
+            var correct = setCards.reduce(function (acc, c) {
+              var p = progressByCard.get(c.id);
+              return acc + (p ? (p.correct_count || 0) : 0);
+            }, 0);
+            var wrong = setCards.reduce(function (acc, c) {
+              var p = progressByCard.get(c.id);
+              return acc + (p ? (p.incorrect_count || 0) : 0);
+            }, 0);
+            var acc = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : null;
+            var lastStudied = set.last_studied ? new Date(set.last_studied).toLocaleDateString() : "—";
+            return { set: set, total: total, mastered: mastered, accuracy: acc, lastStudied: lastStudied };
+          }).filter(function (r) { return r.total > 0; });
+
+          if (!rows.length) {
+            container.innerHTML = '<p class="meta-copy">No sets with cards yet.</p>';
+            return;
+          }
+
+          var html = '<div class="stats-set-table">';
+          html += '<div class="stats-set-row stats-set-header"><span>Set</span><span>Mastered</span><span>Accuracy</span><span>Last studied</span></div>';
+          rows.forEach(function (r) {
+            html += '<div class="stats-set-row">';
+            html += '<span class="stats-set-name"><a href="/carded/library?set=' + r.set.id + '">' + escHtml(r.set.name) + '</a></span>';
+            html += '<span>' + r.mastered + ' / ' + r.total + '</span>';
+            html += '<span>' + (r.accuracy !== null ? r.accuracy + "%" : "—") + '</span>';
+            html += '<span>' + r.lastStudied + '</span>';
+            html += '</div>';
+          });
+          html += '</div>';
+          container.innerHTML = html;
+        }
+
+        function escHtml(str) {
+          return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         }
 
         // Sign out
