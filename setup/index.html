@@ -110,6 +110,12 @@
 
         document.getElementById("continue-btn").addEventListener("click", function () {
           try { localStorage.setItem(ONBOARDING_KEY, "true"); } catch (_) {}
+          // Queue walkthrough on library page if first time
+          var walkthroughDone = false;
+          try { walkthroughDone = localStorage.getItem("carded_walkthrough_complete") === "true"; } catch (_) {}
+          if (!walkthroughDone) {
+            try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+          }
           window.location.assign("/carded/library");
         });
       });
