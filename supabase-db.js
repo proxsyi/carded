@@ -296,6 +296,22 @@
     );
   }
 
+  async function createStudySession(userId, data) {
+    return unwrap(
+      () => requireSupabase().from("study_sessions").insert({
+        id: data.id,
+        user_id: userId,
+        set_id: data.set_id,
+        mode: data.mode,
+        total_cards: data.total_cards,
+        correct_count: data.correct_count,
+        wrong_count: data.wrong_count,
+        started_at: data.started_at,
+        completed_at: data.completed_at,
+      })
+    );
+  }
+
   async function fetchAllUserData(userId) {
     const [folders, sets, progress, stats] = await Promise.all([
       getFolders(userId),
@@ -321,6 +337,7 @@
     createCard,
     createFolder,
     createSet,
+    createStudySession,
     deleteCard,
     deleteFolder,
     deleteSet,

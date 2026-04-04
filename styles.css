@@ -1099,6 +1099,53 @@ select:focus-visible,
 .correct-value { color: var(--correct); }
 .missed-value { color: var(--incorrect); }
 
+/* Stats set breakdown table */
+.stats-set-table {
+  display: grid;
+  gap: 2px;
+}
+
+.stats-set-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 100px;
+  gap: 8px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+  align-items: center;
+}
+
+.stats-set-row:last-child {
+  border-bottom: none;
+}
+
+.stats-set-header {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats-set-name a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.stats-set-name a:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+@media (max-width: 428px) {
+  .stats-set-row {
+    grid-template-columns: 1fr 70px 60px;
+  }
+  .stats-set-row span:last-child {
+    display: none;
+  }
+}
+
 .toast-root {
   position: fixed;
   top: 18px;

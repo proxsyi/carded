@@ -42,6 +42,19 @@
     return Promise.resolve();
   });
 
+  // v4: add study_sessions table for activity tracking and stats.
+  db.version(4).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+    local_kv: "key",
+    study_sessions: "id, user_id, set_id, started_at",
+  }).upgrade(function (tx) {
+    return Promise.resolve();
+  });
+
   async function clearAllTables() {
     await db.transaction("rw", db.tables, async function () {
       await Promise.all(db.tables.map(function (table) {
@@ -145,6 +158,10 @@
     return db.table(tableName).toArray();
   }
 
+  async function getStudySessions(userId) {
+    return db.study_sessions.where("user_id").equals(userId).toArray();
+  }
+
   async function kvGet(key) {
     const row = await db.local_kv.get(key);
     return row ? row.value : null;
@@ -167,6 +184,7 @@
     getAll,
     getAllUserData,
     getById,
+    getStudySessions,
     kvDelete,
     kvGet,
     kvSet,

@@ -173,6 +173,10 @@
       return api.updateStats(activeUserId, cleanPayload);
     }
 
+    if (table === "study_sessions" && operation === "insert") {
+      return api.createStudySession(activeUserId, cleanPayload);
+    }
+
     return null;
   }
 
