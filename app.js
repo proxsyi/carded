@@ -917,16 +917,16 @@
         <section class="import-panel stack">
           <div>
             <h2>Import cards</h2>
-            <p class="section-copy">Paste Term, Definition lines or upload a UTF-8 .txt file.</p>
+            <p class="section-copy">Paste cards (one per line) or upload a .txt file. Supported formats: <code>Term | Definition</code>, <code>Term, Definition</code>, or tab-separated.</p>
           </div>
           <form class="stack" data-form="bulk-import" data-set-id="${set.id}">
             <div class="field">
               <label for="bulk-import-input">Paste cards</label>
-              <textarea id="bulk-import-input" class="textarea" name="bulkText" placeholder="Term, Definition"></textarea>
+              <textarea id="bulk-import-input" class="textarea" name="bulkText" placeholder="Term | Definition"></textarea>
             </div>
             <div class="import-panel__actions">
               <button class="ghost-button" type="button" data-action="trigger-file-upload" data-set-id="${set.id}">Choose .txt file</button>
-              <input class="visually-hidden" type="file" accept=".txt,text/plain" data-upload-input="${set.id}">
+              <input class="visually-hidden" type="file" accept=".txt,.zip,text/plain,application/zip" data-upload-input="${set.id}">
               <button class="button" type="submit">Import</button>
             </div>
           </form>
@@ -1236,6 +1236,7 @@
         </div>
         <div class="tile__footer">
           <div class="tile__actions">
+            <button class="icon-button" aria-label="Export folder" data-action="export-folder" data-folder-id="${folder.id}">Export</button>
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
         </div>
@@ -1491,6 +1492,9 @@
       case "export-set":
         exportSet(target.dataset.setId);
         break;
+      case "export-folder":
+        exportFolder(target.dataset.folderId);
+        break;
       case "export-all":
         exportAllSets();
         break;
@@ -1582,6 +1586,12 @@
       const input = target;
       const [file] = input.files || [];
       if (!file) return;
+
+      if (file.name.endsWith(".zip")) {
+        input.value = "";
+        importFromZip(file);
+        return;
+      }
 
       file.text().then(async (text) => {
         const result = await importCardsIntoSet(input.dataset.uploadInput, text);
@@ -2156,6 +2166,20 @@
     }
   }
 
+  function parseCardLine(line) {
+    // Supports: "Term | Definition", "Term\tDefinition", "Term, Definition"
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    let sep = -1;
+    if (trimmed.includes(" | ")) sep = trimmed.indexOf(" | ");
+    else if (trimmed.includes("\t")) sep = trimmed.indexOf("\t");
+    else if (trimmed.includes(",")) sep = trimmed.indexOf(",");
+    if (sep === -1) return null;
+    const term = trimmed.slice(0, sep).trim();
+    const definition = trimmed.slice(sep + (trimmed[sep] === " " ? 3 : 1)).trim();
+    return term && definition ? { term, definition } : null;
+  }
+
   async function importCardsIntoSet(setId, text) {
     const lines = text.split(/\r?\n/);
     const existing = new Set(getCardsForSet(setId).map((card) => `${card.term}\u0000${card.definition}`));
@@ -2163,12 +2187,9 @@
     let skipped = 0;
 
     for (const line of lines) {
-      if (!line.trim()) continue;
-      const commaIndex = line.indexOf(",");
-      if (commaIndex === -1) continue;
-      const term = line.slice(0, commaIndex).trim();
-      const definition = line.slice(commaIndex + 1).trim();
-      if (!term || !definition) continue;
+      const parsed = parseCardLine(line);
+      if (!parsed) continue;
+      const { term, definition } = parsed;
       const signature = `${term}\u0000${definition}`;
       if (existing.has(signature)) {
         skipped += 1;
@@ -2183,6 +2204,7 @@
         correctCount: 0,
         incorrectCount: 0,
         box: 1,
+        points: 0,
         lastSeen: null,
         order: nextOrder(getCardsForSet(setId).concat(newCards)),
       });
@@ -2199,31 +2221,85 @@
     return { imported: newCards.length, skipped };
   }
 
+  function setToTxtContent(setId) {
+    return getCardsForSet(setId)
+      .map((card) => `${card.term} | ${card.definition}`)
+      .join("\n");
+  }
+
   async function exportSet(setId) {
     const set = getSet(setId);
     if (!set) return;
-    const text = getCardsForSet(setId)
-      .map((card) => `${card.term}, ${card.definition}`)
-      .join("\n");
-    downloadTextFile(`${sanitizeFileName(set.name)}.txt`, text);
+    downloadTextFile(`${sanitizeFileName(set.name)}.txt`, setToTxtContent(setId));
     window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Set exported");
     render();
   }
 
-  function exportAllSets() {
-    const sections = state.sets.map((set) => {
-      const lines = getCardsForSet(set.id).map((card) => `${card.term}, ${card.definition}`).join("\n");
-      return `# ${set.name}\n${lines}`;
-    });
-    downloadTextFile("carded-backup.txt", sections.join("\n\n"));
+  async function exportFolder(folderId) {
+    const folder = getFolder(folderId);
+    if (!folder) return;
+    const sets = state.sets.filter((s) => s.folderId === folderId);
+    if (!sets.length) { showToast("No sets in this folder to export"); return; }
+
+    if (typeof window.JSZip !== "undefined") {
+      const zip = new window.JSZip();
+      sets.forEach((set) => {
+        const content = setToTxtContent(set.id);
+        zip.file(`${sanitizeFileName(set.name)}.txt`, content);
+      });
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(`${sanitizeFileName(folder.name)}.zip`, blob);
+      showToast("Folder exported as .zip");
+    } else {
+      // Fallback: export as one combined .txt
+      const sections = sets.map((set) => `# ${set.name}\n${setToTxtContent(set.id)}`);
+      downloadTextFile(`${sanitizeFileName(folder.name)}.txt`, sections.join("\n\n"));
+      showToast("Folder exported as .txt");
+    }
     window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
-    showToast("Backup exported");
+    render();
+  }
+
+  async function exportAllSets() {
+    if (typeof window.JSZip !== "undefined") {
+      const zip = new window.JSZip();
+      const date = new Date().toISOString().slice(0, 10);
+
+      // Folders
+      for (const folder of state.folders) {
+        const folderSets = state.sets.filter((s) => s.folderId === folder.id);
+        for (const set of folderSets) {
+          const safeFolderName = sanitizeFileName(folder.name);
+          zip.file(`${safeFolderName}/${sanitizeFileName(set.name)}.txt`, setToTxtContent(set.id));
+        }
+      }
+      // Standalone sets
+      const standalone = state.sets.filter((s) => !s.folderId);
+      for (const set of standalone) {
+        zip.file(`${sanitizeFileName(set.name)}.txt`, setToTxtContent(set.id));
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(`Carded_Export_${date}.zip`, blob);
+      showToast("All data exported");
+    } else {
+      const sections = state.sets.map((set) => {
+        return `# ${set.name}\n${setToTxtContent(set.id)}`;
+      });
+      downloadTextFile("carded-backup.txt", sections.join("\n\n"));
+      showToast("Backup exported");
+    }
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     render();
   }
 
   function downloadTextFile(filename, content) {
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    downloadBlob(filename, blob);
+  }
+
+  function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -2232,6 +2308,59 @@
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function importFromZip(file) {
+    if (typeof window.JSZip === "undefined") {
+      showToast("Zip import is not available right now — try again when online.");
+      return;
+    }
+    let zip;
+    try {
+      zip = await window.JSZip.loadAsync(file);
+    } catch (_) {
+      showToast("Could not read zip file.");
+      return;
+    }
+
+    const txtFiles = Object.keys(zip.files).filter((name) => !zip.files[name].dir && name.endsWith(".txt"));
+    if (!txtFiles.length) { showToast("No .txt files found in zip."); return; }
+
+    let imported = 0;
+    let setsCreated = 0;
+
+    for (const filePath of txtFiles) {
+      const parts = filePath.split("/");
+      const fileName = parts[parts.length - 1];
+      const setName = fileName.replace(/\.txt$/, "").trim();
+      if (!setName) continue;
+
+      const folderName = parts.length > 1 ? parts[0] : null;
+      const text = await zip.files[filePath].async("string");
+
+      // Find or create folder
+      let folderId = null;
+      if (folderName) {
+        let folder = state.folders.find((f) => f.name.toLowerCase() === folderName.toLowerCase());
+        if (!folder) {
+          folder = await createFolder(folderName.slice(0, MAX_NAME_LENGTH));
+        }
+        folderId = folder.id;
+      }
+
+      // Find or create set
+      let set = state.sets.find((s) => s.name.toLowerCase() === setName.toLowerCase() && s.folderId === folderId);
+      if (!set) {
+        set = await createSet(setName.slice(0, MAX_NAME_LENGTH), folderId);
+        setsCreated += 1;
+      }
+
+      const result = await importCardsIntoSet(set.id, text);
+      imported += result.imported;
+    }
+
+    showToast(`Imported ${imported} card${imported !== 1 ? "s" : ""} across ${setsCreated} new set${setsCreated !== 1 ? "s" : ""}`);
+    render();
   }
 
   function saveStudySessionState() {

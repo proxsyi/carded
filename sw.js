@@ -34,6 +34,7 @@ const APP_SHELL_ASSETS = [
   "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
   "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css",
   "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js",
+  "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
 ];
 
 function isSupabaseRequest(url) {
