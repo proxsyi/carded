@@ -53,6 +53,7 @@
 
   let modalTriggerEl = null;
   let currentModal = null;
+  let modalCloseTimer = null;
 
   /**
    * Show a modal dialog.
@@ -69,6 +70,13 @@
   function showModal(options) {
     const root = document.getElementById("modal-root");
     if (!root) return;
+
+    // Cancel any in-flight close animation
+    if (modalCloseTimer) {
+      clearTimeout(modalCloseTimer);
+      modalCloseTimer = null;
+      root.innerHTML = "";
+    }
 
     modalTriggerEl = document.activeElement;
     currentModal = options;
@@ -174,11 +182,21 @@
 
   function closeModal() {
     const root = document.getElementById("modal-root");
-    if (root) root.innerHTML = "";
+    if (!root) { currentModal = null; return; }
+    const backdrop = root.querySelector(".modal-backdrop");
     currentModal = null;
-    if (modalTriggerEl && typeof modalTriggerEl.focus === "function") {
-      modalTriggerEl.focus();
-      modalTriggerEl = null;
+    const trigger = modalTriggerEl;
+    modalTriggerEl = null;
+    if (backdrop && !backdrop.classList.contains("is-closing")) {
+      backdrop.classList.add("is-closing");
+      modalCloseTimer = setTimeout(function () {
+        modalCloseTimer = null;
+        root.innerHTML = "";
+        if (trigger && typeof trigger.focus === "function") trigger.focus();
+      }, 200);
+    } else {
+      root.innerHTML = "";
+      if (trigger && typeof trigger.focus === "function") trigger.focus();
     }
   }
 

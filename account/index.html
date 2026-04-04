@@ -394,6 +394,9 @@
             <h2 style="margin:0 0 16px">Stats</h2>
             <p class="meta-copy">Stats are not tracked in local mode.</p>
           `;
+          // Hide account-only actions in local mode
+          var deleteBtn = document.getElementById("delete-account-button");
+          if (deleteBtn) deleteBtn.style.display = "none";
         }
 
         // ── Tab system ─────────────────────────────────────────────────────────
@@ -610,8 +613,14 @@
         }
 
         function closeCropModal() {
-          document.getElementById("crop-modal").classList.add("hidden");
-          if (cropper) { cropper.destroy(); cropper = null; }
+          var cropModal = document.getElementById("crop-modal");
+          if (cropModal.classList.contains("is-closing")) return;
+          cropModal.classList.add("is-closing");
+          setTimeout(function () {
+            cropModal.classList.add("hidden");
+            cropModal.classList.remove("is-closing");
+            if (cropper) { cropper.destroy(); cropper = null; }
+          }, 200);
         }
 
         document.getElementById("crop-cancel").addEventListener("click", closeCropModal);
@@ -737,8 +746,8 @@
 
         var userIdentities = [];
 
-        // Password change form
-        document.getElementById("password-form").addEventListener("submit", async function (event) {
+        // Password change form (email-auth users only; not applicable in local mode)
+        if (!isLocalMode) document.getElementById("password-form").addEventListener("submit", async function (event) {
           event.preventDefault();
           var data = new FormData(event.currentTarget);
           var password = String(data.get("newPassword") || "");
@@ -1220,11 +1229,15 @@
         }
 
         function closeDeleteModal() {
-          deleteModal.classList.add("hidden");
+          if (deleteModal.classList.contains("is-closing")) return;
           deleteEmailError.classList.add("hidden");
-          if (deleteModalPreviousFocus && typeof deleteModalPreviousFocus.focus === "function") {
-            deleteModalPreviousFocus.focus();
-          }
+          deleteModal.classList.add("is-closing");
+          var prevFocus = deleteModalPreviousFocus;
+          setTimeout(function () {
+            deleteModal.classList.add("hidden");
+            deleteModal.classList.remove("is-closing");
+            if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+          }, 200);
         }
 
         document.getElementById("delete-account-button").addEventListener("click", openDeleteModal);
