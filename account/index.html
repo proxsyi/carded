@@ -369,11 +369,32 @@
         }
 
         // ── Auth guard ─────────────────────────────────────────────────────────
-        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
-        if (!session) return;
+        var isLocalMode = window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode();
+        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: !isLocalMode });
+        if (!isLocalMode && !session) return;
+        if (isLocalMode && !session) session = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
 
         document.getElementById("settings-view").classList.remove("hidden");
         document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
+
+        // Show local mode UI if applicable
+        if (isLocalMode) {
+          document.getElementById("tab-profile").innerHTML = `
+            <div class="panel stack">
+              <h2 style="margin:0 0 8px">Local mode</h2>
+              <p style="color:var(--text-secondary);margin:0 0 16px">You're using Carded without an account. Your data is stored on this device only.</p>
+              <p style="color:var(--text-secondary);margin:0 0 16px">Create an account to sync your data across devices and keep it safe in the cloud.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <a class="button" href="/carded/signup">Create Account</a>
+                <a class="ghost-button" href="/carded/login">Sign in</a>
+              </div>
+            </div>
+          `;
+          document.getElementById("tab-data").querySelector(".panel:first-child").innerHTML = `
+            <h2 style="margin:0 0 16px">Stats</h2>
+            <p class="meta-copy">Stats are not tracked in local mode.</p>
+          `;
+        }
 
         // ── Tab system ─────────────────────────────────────────────────────────
         function switchTab(name) {
@@ -385,7 +406,7 @@
             panel.classList.toggle("hidden", panel.dataset.panel !== name);
           });
           // Lazy-load data tab stats on first open
-          if (name === "data" && !statsLoaded) {
+          if (name === "data" && !statsLoaded && !isLocalMode) {
             loadStats(session);
           }
         }
@@ -1196,8 +1217,7 @@
           }
           deleteEmailError.classList.add("hidden");
           try {
-            var response = await window.supabaseClient.rpc("delete_user");
-            if (response.error) throw response.error;
+            await window.CardedSupabaseDB.setPendingDeletion(session.user.id, window.DELETION_GRACE_PERIOD_DAYS);
             await window.CardedAuth.signOut();
             window.CardedUtils.redirectTo(window.BASE_PATH, null, true);
           } catch (error) {

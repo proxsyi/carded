@@ -73,7 +73,9 @@
 
     state.userId = session.user.id;
     state.userEmail = session.user.email || "";
+    state.localMode = Boolean(session.local) || (window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode());
     if (
+      !state.localMode &&
       window.location.pathname === window.BASE_PATH + "/library" &&
       (window.location.search.includes("code=") || window.location.hash.includes("access_token="))
     ) {
@@ -97,8 +99,15 @@
     }
 
     try {
-      const bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
-      state.online = window.CardedSync.isOnline();
+      let bundle;
+      if (state.localMode) {
+        // Local mode: skip Supabase sync entirely
+        state.online = false;
+        bundle = await window.CardedDB.getAllUserData(state.userId);
+      } else {
+        bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
+        state.online = window.CardedSync.isOnline();
+      }
       await loadAll(bundle);
       await cleanOrphanedLocalData();
     } catch (error) {
@@ -406,6 +415,9 @@
         }
         throw dbError;
       }
+
+      // Skip remote sync in local mode
+      if (state.localMode) return { queued: false };
 
       const result = await window.CardedSync.syncMutation(table, operation, row);
       state.online = window.CardedSync.isOnline();
@@ -740,6 +752,9 @@
 
   function renderHeaderActions() {
     const themeEff = window.CardedTheme ? window.CardedTheme.effectiveTheme(window.CardedTheme.getStoredTheme()) : "dark";
+    const avatarInitial = state.localMode
+      ? "L"
+      : escapeHtml((window.CardedUtils.safeGet("carded_display_name") || state.userEmail || "U").slice(0, 1).toUpperCase());
     els.headerActions.innerHTML = `
       <button class="ghost-button" data-action="create-folder">New folder</button>
       <button class="button" data-action="create-set">New set</button>
@@ -747,8 +762,8 @@
         <span class="theme-icon-moon" aria-hidden="true" ${themeEff !== "dark" ? 'style="display:none"' : ""}>🌙</span>
         <span class="theme-icon-sun" aria-hidden="true" ${themeEff === "dark" ? 'style="display:none"' : ""}>☀️</span>
       </button>
-      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
-        <span class="account-link__avatar" aria-hidden="true">${escapeHtml((window.CardedUtils.safeGet("carded_display_name") || state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
+      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="${state.localMode ? "Settings (local mode)" : "Open account"}">
+        <span class="account-link__avatar${state.localMode ? " local-mode-avatar" : ""}" aria-hidden="true">${avatarInitial}</span>
       </a>
     `;
     // Wire theme toggle
