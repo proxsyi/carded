@@ -44,6 +44,7 @@
   };
   let writeQueue = Promise.resolve();
   let modalTriggerEl = null;
+  let modalCloseTimer = null;
   let dirtyEditor = false;
 
   document.addEventListener("DOMContentLoaded", init);
@@ -1943,14 +1944,30 @@
   }
 
   function renderModal() {
-    if (!state.modal) {
+    // Cancel any in-flight close animation so new open doesn't get cleared
+    if (modalCloseTimer) {
+      clearTimeout(modalCloseTimer);
+      modalCloseTimer = null;
       els.modalRoot.innerHTML = "";
-      // Return focus to the element that triggered the modal
-      if (modalTriggerEl && typeof modalTriggerEl.focus === "function") {
-        modalTriggerEl.focus();
-        modalTriggerEl = null;
+    }
+
+    if (!state.modal) {
+      const existingBackdrop = els.modalRoot.querySelector(".modal-backdrop");
+      const trigger = modalTriggerEl;
+      modalTriggerEl = null;
+      if (existingBackdrop && !existingBackdrop.classList.contains("is-closing")) {
+        existingBackdrop.classList.add("is-closing");
+        modalCloseTimer = setTimeout(function () {
+          modalCloseTimer = null;
+          els.modalRoot.innerHTML = "";
+          document.body.removeAttribute("aria-hidden");
+          if (trigger && typeof trigger.focus === "function") trigger.focus();
+        }, 200);
+      } else {
+        els.modalRoot.innerHTML = "";
+        document.body.removeAttribute("aria-hidden");
+        if (trigger && typeof trigger.focus === "function") trigger.focus();
       }
-      document.body.removeAttribute("aria-hidden");
       return;
     }
 

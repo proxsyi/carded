@@ -220,6 +220,11 @@ All interactive buttons: `min-height: 44px`, `border-radius: 8px`, `transition: 
 3. Cancel/confirm buttons must be wired and functional
 4. Never ship a modal with dead buttons or non-functional dismiss
 
+**Modal animation spec** (all modals and overlays must follow):
+- **Open**: backdrop fades in `opacity: 0 → 1` over `0.2s ease`. Content scales in `opacity: 0, scale(0.95) → opacity: 1, scale(1)` over `0.2s ease`. Handled automatically by CSS when `.modal-backdrop` is inserted into the DOM.
+- **Close**: add `.is-closing` class to backdrop, which plays the reverse animation. Remove from DOM (or add `.hidden`) only after `200ms`. Never instantly disappear.
+- **Rule**: Modals must NEVER instantly appear or disappear. All modals and overlays use these enter/exit animations.
+
 ### Header
 
 Every page (homepage and authenticated pages alike) must include the same top bar: logo on the left, theme toggle on the right, and either a profile link or login button. No page is exempt from this rule.
