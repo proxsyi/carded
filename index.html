@@ -32,16 +32,27 @@
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <header class="topbar" id="landing-topbar">
+      <div class="topbar__brand">
+        <a href="/carded" class="brand-link" id="homepage-brand-link" aria-label="Carded home">
+          <span class="brand-mark" aria-hidden="true">🃏</span>
+          <span class="brand-text">Carded</span>
+        </a>
+      </div>
+      <div class="topbar__actions" id="landing-header-actions">
+        <button class="icon-button" id="landing-theme-toggle" type="button" aria-label="Toggle theme">
+          <span id="landing-theme-moon" aria-hidden="true">🌙</span>
+          <span id="landing-theme-sun" aria-hidden="true" style="display:none">☀️</span>
+        </button>
+        <a class="ghost-button" href="/carded/login" id="landing-login-btn">Log in</a>
+      </div>
+    </header>
     <main class="landing-page" id="main">
       <div id="install-banner" class="install-banner hidden">
         <p>Install Carded for offline access.</p>
         <button id="install-button" class="button" type="button">Install</button>
       </div>
       <section class="landing-hero">
-        <div class="landing-brand">
-          <span class="brand-mark" aria-hidden="true">🃏</span>
-          <span class="brand-text">Carded</span>
-        </div>
         <h1>Study smarter. Remember more.</h1>
         <p class="section-copy">Offline-first flashcards with cloud sync, fast study sessions, and zero clutter.</p>
         <div class="landing-actions">
@@ -116,7 +127,40 @@
           }
         }
         if (window.CardedAuthGuard.maybeHandleRecoveryRedirect()) return;
-        await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+
+        // Wire theme toggle in topbar
+        var themeToggle = document.getElementById("landing-theme-toggle");
+        if (themeToggle) {
+          function updateThemeIcons() {
+            var stored = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "dark";
+            var eff = window.CardedTheme ? window.CardedTheme.effectiveTheme(stored) : "dark";
+            var moon = document.getElementById("landing-theme-moon");
+            var sun = document.getElementById("landing-theme-sun");
+            if (moon) moon.style.display = eff === "dark" ? "" : "none";
+            if (sun) sun.style.display = eff !== "dark" ? "" : "none";
+            themeToggle.setAttribute("aria-label", eff === "dark" ? "Switch to light theme" : "Switch to dark theme");
+          }
+          updateThemeIcons();
+          themeToggle.addEventListener("click", function () {
+            if (window.CardedTheme) window.CardedTheme.cycleTheme();
+            updateThemeIcons();
+          });
+        }
+
+        // Update header based on auth state
+        var loginBtn = document.getElementById("landing-login-btn");
+        var brandLink = document.getElementById("homepage-brand-link");
+        if (session && session.user) {
+          // Logged in — show "Library" button, update brand link
+          if (loginBtn) {
+            loginBtn.href = "/carded/library";
+            loginBtn.textContent = "Library →";
+            loginBtn.className = "button";
+          }
+          if (brandLink) brandLink.href = "/carded/library";
+        }
+
         var deferredPrompt = null;
         window.addEventListener("beforeinstallprompt", function (event) {
           event.preventDefault();

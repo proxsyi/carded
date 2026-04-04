@@ -510,69 +510,80 @@
           showProfilePicInitial(getInitial(currentDisplayName, sess.user.email));
         }
 
-        // Display name char counter
-        document.getElementById("display-name").addEventListener("input", function (event) {
-          updateCharCounter("display-name-counter", event.currentTarget.value.length, 30);
-        });
+        if (!isLocalMode) {
+          // Display name char counter
+          var displayNameInput = document.getElementById("display-name");
+          if (displayNameInput) {
+            displayNameInput.addEventListener("input", function (event) {
+              updateCharCounter("display-name-counter", event.currentTarget.value.length, 30);
+            });
+          }
 
-        // Save display name
-        document.getElementById("save-display-name").addEventListener("click", async function () {
-          var name = document.getElementById("display-name").value.trim();
-          var btn = this;
-          window.CardedUtils.withLoading(btn, async function () {
-            try {
-              await window.CardedSupabaseDB.upsertProfile(session.user.id, { display_name: name });
-              currentDisplayName = name;
-              window.CardedUtils.safeSet("carded_display_name", name);
-              // Update initial if using initial mode
-              var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
-              if (pref === "initial") {
-                showProfilePicInitial(getInitial(name, session.user.email));
-              }
-              window.CardedComponents.showToast("Name saved.");
-            } catch (error) {
-              window.CardedComponents.showToast(error.message || "Failed to save name.");
-            }
-          });
-        });
+          // Save display name
+          var saveDisplayNameBtn = document.getElementById("save-display-name");
+          if (saveDisplayNameBtn) {
+            saveDisplayNameBtn.addEventListener("click", async function () {
+              var name = document.getElementById("display-name").value.trim();
+              var btn = this;
+              window.CardedUtils.withLoading(btn, async function () {
+                try {
+                  await window.CardedSupabaseDB.upsertProfile(session.user.id, { display_name: name });
+                  currentDisplayName = name;
+                  window.CardedUtils.safeSet("carded_display_name", name);
+                  var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+                  if (pref === "initial") {
+                    showProfilePicInitial(getInitial(name, session.user.email));
+                  }
+                  window.CardedComponents.showToast("Name saved.");
+                } catch (error) {
+                  window.CardedComponents.showToast(error.message || "Failed to save name.");
+                }
+              });
+            });
+          }
 
-        // Profile picture preference buttons
-        document.querySelectorAll("[data-pfp]").forEach(function (btn) {
-          btn.addEventListener("click", async function () {
-            var pref = btn.dataset.pfp;
-            if (pref === "custom") {
-              document.getElementById("pfp-file-input").click();
-              return;
-            }
-            if (pref === "provider") {
-              var avatarUrl = session.user.user_metadata && session.user.user_metadata.avatar_url;
-              if (!avatarUrl) {
-                window.CardedComponents.showToast("No provider photo available for your account.");
+          // Profile picture preference buttons
+          document.querySelectorAll("[data-pfp]").forEach(function (btn) {
+            btn.addEventListener("click", async function () {
+              var pref = btn.dataset.pfp;
+              if (pref === "custom") {
+                var pfpInput = document.getElementById("pfp-file-input");
+                if (pfpInput) pfpInput.click();
                 return;
               }
-            }
-            window.CardedUtils.safeSet("carded_pfp_preference", pref);
-            setActivePfpBtn(pref);
-            await applyPfpPreference(pref, session);
+              if (pref === "provider") {
+                var avatarUrl = session.user.user_metadata && session.user.user_metadata.avatar_url;
+                if (!avatarUrl) {
+                  window.CardedComponents.showToast("No provider photo available for your account.");
+                  return;
+                }
+              }
+              window.CardedUtils.safeSet("carded_pfp_preference", pref);
+              setActivePfpBtn(pref);
+              await applyPfpPreference(pref, session);
+            });
           });
-        });
 
-        // File input for custom photo
-        document.getElementById("pfp-file-input").addEventListener("change", function (event) {
-          var file = event.currentTarget.files && event.currentTarget.files[0];
-          if (!file) return;
-          if (file.size > 2 * 1024 * 1024) {
-            window.CardedComponents.showToast("Photo must be under 2MB.");
-            event.currentTarget.value = "";
-            return;
+          // File input for custom photo
+          var pfpFileInput = document.getElementById("pfp-file-input");
+          if (pfpFileInput) {
+            pfpFileInput.addEventListener("change", function (event) {
+              var file = event.currentTarget.files && event.currentTarget.files[0];
+              if (!file) return;
+              if (file.size > 2 * 1024 * 1024) {
+                window.CardedComponents.showToast("Photo must be under 2MB.");
+                event.currentTarget.value = "";
+                return;
+              }
+              var reader = new FileReader();
+              reader.onload = function (e) {
+                openCropModal(e.target.result);
+              };
+              reader.readAsDataURL(file);
+              event.currentTarget.value = "";
+            });
           }
-          var reader = new FileReader();
-          reader.onload = function (e) {
-            openCropModal(e.target.result);
-          };
-          reader.readAsDataURL(file);
-          event.currentTarget.value = "";
-        });
+        }
 
         // Crop modal logic
         var cropper = null;
@@ -604,6 +615,9 @@
         }
 
         document.getElementById("crop-cancel").addEventListener("click", closeCropModal);
+        document.getElementById("crop-modal").addEventListener("click", function (e) {
+          if (e.target === document.getElementById("crop-modal")) closeCropModal();
+        });
 
         document.getElementById("crop-confirm").addEventListener("click", async function () {
           var btn = this;
@@ -1215,6 +1229,9 @@
 
         document.getElementById("delete-account-button").addEventListener("click", openDeleteModal);
         document.getElementById("cancel-delete-button").addEventListener("click", closeDeleteModal);
+        deleteModal.addEventListener("click", function (e) {
+          if (e.target === deleteModal) closeDeleteModal();
+        });
 
         document.getElementById("confirm-delete-button").addEventListener("click", async function () {
           var typedEmail = deleteConfirmEmail.value.trim().toLowerCase();
@@ -1237,7 +1254,7 @@
         });
 
         // ── Init profile tab ───────────────────────────────────────────────────
-        await loadProfileTab(session);
+        if (!isLocalMode) await loadProfileTab(session);
       });
     </script>
   </body>
