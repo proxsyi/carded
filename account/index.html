@@ -21,6 +21,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" crossorigin="anonymous">
     <!-- Chart.js for stats charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
+    <!-- JSZip for zip export/import -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous" defer></script>
     <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
@@ -252,13 +254,19 @@
             <!-- Import -->
             <div class="panel stack">
               <h2 style="margin:0 0 4px">Import</h2>
-              <p class="meta-copy" style="margin:0">Coming in a future update.</p>
+              <p class="meta-copy" style="margin:0 0 12px">Import a .txt or .zip file exported from Carded. Supports <code>Term | Definition</code>, comma, or tab-separated formats.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button id="import-txt-btn" class="ghost-button" type="button">Import .txt</button>
+                <button id="import-zip-btn" class="ghost-button" type="button">Import .zip</button>
+              </div>
+              <input id="import-file-input" type="file" accept=".txt,.zip,text/plain,application/zip" style="display:none">
             </div>
 
             <!-- Export -->
             <div class="panel stack">
-              <h2 style="margin:0 0 4px">Export</h2>
-              <p class="meta-copy" style="margin:0">Coming in a future update.</p>
+              <h2 style="margin:0 0 4px">Export all data</h2>
+              <p class="meta-copy" style="margin:0 0 12px">Download all your folders and sets as a .zip file.</p>
+              <button id="export-all-btn" class="ghost-button" type="button">Export all as .zip</button>
             </div>
 
             <!-- Account actions -->
@@ -960,6 +968,142 @@
         function escHtml(str) {
           return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         }
+
+        // ── Import / Export ────────────────────────────────────────────────────
+        function parseCardLine(line) {
+          var trimmed = line.trim();
+          if (!trimmed) return null;
+          var sep = -1;
+          if (trimmed.includes(" | ")) sep = trimmed.indexOf(" | ");
+          else if (trimmed.includes("\t")) sep = trimmed.indexOf("\t");
+          else if (trimmed.includes(",")) sep = trimmed.indexOf(",");
+          if (sep < 0) return null;
+          var term = trimmed.slice(0, sep).trim();
+          var def = trimmed.slice(sep + (trimmed[sep] === " " ? 3 : 1)).trim();
+          return term && def ? { term: term, definition: def } : null;
+        }
+
+        async function importTxtFile(file) {
+          var text = await file.text();
+          var lines = text.split(/\r?\n/);
+          var cards = lines.map(parseCardLine).filter(Boolean);
+          if (!cards.length) { window.CardedComponents.showToast("No cards found in file."); return; }
+          var setName = file.name.replace(/\.txt$/i, "").trim().slice(0, 30);
+          // Create a new standalone set
+          var setId = crypto.randomUUID();
+          var setRow = { id: setId, user_id: sess.user.id, folder_id: null, name: setName, order: 0, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+          await window.CardedDB.put("sets", setRow);
+          for (var i = 0; i < cards.length; i++) {
+            var c = cards[i];
+            await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: sess.user.id, set_id: setId, term: c.term, definition: c.definition, order: i, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+          window.CardedComponents.showToast("Imported " + cards.length + " cards into "" + setName + """);
+        }
+
+        async function importZipFile(file) {
+          if (typeof window.JSZip === "undefined") { window.CardedComponents.showToast("Zip support unavailable. Try again when online."); return; }
+          var zip;
+          try { zip = await window.JSZip.loadAsync(file); } catch (_) { window.CardedComponents.showToast("Could not read zip file."); return; }
+          var txtFiles = Object.keys(zip.files).filter(function (n) { return !zip.files[n].dir && n.endsWith(".txt"); });
+          if (!txtFiles.length) { window.CardedComponents.showToast("No .txt files found in zip."); return; }
+          var imported = 0;
+          var setsCreated = 0;
+          for (var fi = 0; fi < txtFiles.length; fi++) {
+            var filePath = txtFiles[fi];
+            var parts = filePath.split("/");
+            var fileName = parts[parts.length - 1];
+            var setName = fileName.replace(/\.txt$/i, "").trim().slice(0, 30);
+            if (!setName) continue;
+            var text = await zip.files[filePath].async("string");
+            var lines = text.split(/\r?\n/);
+            var cards = lines.map(parseCardLine).filter(Boolean);
+            if (!cards.length) continue;
+            var setId = crypto.randomUUID();
+            await window.CardedDB.put("sets", { id: setId, user_id: sess.user.id, folder_id: null, name: setName, order: setsCreated, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+            for (var ci = 0; ci < cards.length; ci++) {
+              var card = cards[ci];
+              await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: sess.user.id, set_id: setId, term: card.term, definition: card.definition, order: ci, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+            }
+            imported += cards.length;
+            setsCreated += 1;
+          }
+          window.CardedComponents.showToast("Imported " + imported + " cards across " + setsCreated + " sets.");
+        }
+
+        var importInput = document.getElementById("import-file-input");
+        var importMode = "txt";
+
+        document.getElementById("import-txt-btn").addEventListener("click", function () {
+          importMode = "txt";
+          importInput.accept = ".txt,text/plain";
+          importInput.click();
+        });
+        document.getElementById("import-zip-btn").addEventListener("click", function () {
+          importMode = "zip";
+          importInput.accept = ".zip,application/zip";
+          importInput.click();
+        });
+        importInput.addEventListener("change", async function () {
+          var file = importInput.files[0];
+          if (!file) return;
+          importInput.value = "";
+          if (file.name.endsWith(".zip")) {
+            await importZipFile(file);
+          } else {
+            await importTxtFile(file);
+          }
+        });
+
+        document.getElementById("export-all-btn").addEventListener("click", async function () {
+          var btn = this;
+          window.CardedUtils.withLoading(btn, async function () {
+            var userId = sess.user.id;
+            var userData = await window.CardedDB.getAllUserData(userId);
+            var sets = userData.sets || [];
+            var cards = userData.cards || [];
+            var folders = userData.folders || [];
+
+            function setCards(setId) {
+              return cards.filter(function (c) { return c.set_id === setId; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+            }
+            function toTxt(setId) {
+              return setCards(setId).map(function (c) { return c.term + " | " + c.definition; }).join("\n");
+            }
+
+            if (typeof window.JSZip !== "undefined") {
+              var zip = new window.JSZip();
+              var date = new Date().toISOString().slice(0, 10);
+              folders.forEach(function (folder) {
+                var folderSets = sets.filter(function (s) { return s.folder_id === folder.id; });
+                var safeName = folder.name.replace(/[/\\?%*:|"<>]/g, "-");
+                folderSets.forEach(function (set) {
+                  var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
+                  zip.file(safeName + "/" + setSafe + ".txt", toTxt(set.id));
+                });
+              });
+              sets.filter(function (s) { return !s.folder_id; }).forEach(function (set) {
+                var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
+                zip.file(setSafe + ".txt", toTxt(set.id));
+              });
+              var blob = await zip.generateAsync({ type: "blob" });
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement("a");
+              a.href = url; a.download = "Carded_Export_" + date + ".zip";
+              document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+              window.CardedComponents.showToast("All data exported");
+            } else {
+              var sections = sets.map(function (set) { return "# " + set.name + "\n" + toTxt(set.id); });
+              var blob2 = new Blob([sections.join("\n\n")], { type: "text/plain;charset=utf-8" });
+              var url2 = URL.createObjectURL(blob2);
+              var a2 = document.createElement("a");
+              a2.href = url2; a2.download = "carded-backup.txt";
+              document.body.appendChild(a2); a2.click(); a2.remove();
+              URL.revokeObjectURL(url2);
+              window.CardedComponents.showToast("Backup exported");
+            }
+          });
+        });
 
         // Sign out
         document.getElementById("signout-button").addEventListener("click", async function () {
