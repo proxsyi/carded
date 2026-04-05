@@ -166,7 +166,7 @@
   function maybeHandleRecoveryRedirect() {
     const type = readHashParams().get("type");
     if (type === "recovery" && getCurrentAppPath() === window.BASE_PATH) {
-      window.location.replace(window.location.origin + window.BASE_PATH + "/account" + window.location.hash);
+      window.location.replace(window.location.origin + window.BASE_PATH + "/account/" + window.location.hash);
       return true;
     }
     return false;

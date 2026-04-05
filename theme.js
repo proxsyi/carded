@@ -25,18 +25,12 @@
   }
 
   function getStoredTheme() {
-    return window.CardedUtils
-      ? window.CardedUtils.safeGet(THEME_KEY) || "auto"
-      : (localStorage.getItem(THEME_KEY) || "auto");
+    try { return localStorage.getItem(THEME_KEY) || "auto"; } catch (_) { return "auto"; }
   }
 
   function setTheme(theme) {
     const val = theme === "dark" || theme === "light" || theme === "auto" ? theme : "auto";
-    if (window.CardedUtils) {
-      window.CardedUtils.safeSet(THEME_KEY, val);
-    } else {
-      try { localStorage.setItem(THEME_KEY, val); } catch (_) {}
-    }
+    try { localStorage.setItem(THEME_KEY, val); } catch (_) {}
     applyTheme(val);
     updateToggleIcons(val);
     // Notify other tabs
@@ -83,6 +77,7 @@
     try {
       const bc = new BroadcastChannel("carded-theme");
       bc.onmessage = function (event) {
+        try { localStorage.setItem(THEME_KEY, event.data); } catch (_) {}
         applyTheme(event.data);
         updateToggleIcons(event.data);
       };

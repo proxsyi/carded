@@ -281,7 +281,7 @@
   async function getProfile(userId) {
     const { data, error } = await profilesTable()
       .select("*")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
     if (error) throw error;
     return data;
@@ -290,7 +290,7 @@
   async function upsertProfile(userId, updates) {
     return unwrap(
       () => profilesTable()
-        .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" })
+        .upsert({ id: userId, ...updates }, { onConflict: "id" })
         .select()
         .single()
     );
@@ -301,7 +301,7 @@
     const deletionDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
     return unwrap(
       () => requireSupabase().from("user_profiles")
-        .upsert({ user_id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "user_id" })
+        .upsert({ id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "id" })
         .select()
         .single()
     );
@@ -311,15 +311,15 @@
     return unwrap(
       () => requireSupabase().from("user_profiles")
         .update({ pending_deletion: false, deletion_date: null })
-        .eq("user_id", userId)
+        .eq("id", userId)
     );
   }
 
   async function checkPendingDeletion(userId) {
     const { data, error } = await requireSupabase().from("user_profiles")
       .select("pending_deletion, deletion_date")
-      .eq("user_id", userId)
-      .single();
+      .eq("id", userId)
+      .maybeSingle();
     if (error || !data) return null;
     return data.pending_deletion ? data : null;
   }

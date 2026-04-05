@@ -39,28 +39,56 @@
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
-    <!-- Skeleton loading state (visible before JS runs) -->
+    <!-- Skeleton loading state (visible before JS runs, mirrors real settings layout) -->
     <div id="skeleton-loading" class="auth-shell">
-      <div class="auth-card account-card" style="padding:32px">
+      <div class="auth-card account-card">
         <style>
-          @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-          .skel { background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease infinite; border-radius: 8px; }
+          @keyframes skel-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+          .skel { background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%); background-size: 200% 100%; animation: skel-shimmer 1.5s ease infinite; border-radius: 8px; }
         </style>
-        <div class="skel" style="height:28px;width:120px;margin-bottom:24px"></div>
-        <div style="display:flex;gap:8px;margin-bottom:24px">
-          <div class="skel" style="height:36px;width:90px;border-radius:8px"></div>
-          <div class="skel" style="height:36px;width:110px;border-radius:8px"></div>
-          <div class="skel" style="height:36px;width:70px;border-radius:8px"></div>
+        <!-- Header row: Carded label + Settings title + Back button -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
+          <div>
+            <div class="skel" style="height:12px;width:52px;margin-bottom:8px;border-radius:4px"></div>
+            <div class="skel" style="height:28px;width:110px"></div>
+          </div>
+          <div class="skel" style="height:36px;width:80px;border-radius:8px;margin-top:8px"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
-          <div class="skel" style="width:64px;height:64px;border-radius:50%;flex-shrink:0"></div>
-          <div style="flex:1">
-            <div class="skel" style="height:16px;width:60%;margin-bottom:10px"></div>
-            <div class="skel" style="height:14px;width:40%"></div>
+        <!-- Tab bar -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
+          <div class="skel" style="height:38px;width:72px;border-radius:6px 6px 0 0;margin-right:4px"></div>
+          <div class="skel" style="height:38px;width:100px;border-radius:6px 6px 0 0;margin-right:4px;opacity:0.55"></div>
+          <div class="skel" style="height:38px;width:52px;border-radius:6px 6px 0 0;opacity:0.55"></div>
+        </div>
+        <!-- Profile card -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
+          <div class="skel" style="height:18px;width:72px;margin-bottom:16px"></div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div class="skel" style="width:72px;height:72px;border-radius:50%;flex-shrink:0"></div>
+            <div style="flex:1">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <div class="skel" style="height:34px;width:64px;border-radius:8px"></div>
+                <div class="skel" style="height:34px;width:110px;border-radius:8px"></div>
+                <div class="skel" style="height:34px;width:90px;border-radius:8px"></div>
+              </div>
+              <div class="skel" style="height:11px;width:55%;margin-top:10px;border-radius:4px;opacity:0.6"></div>
+            </div>
           </div>
         </div>
-        <div class="skel" style="height:96px;border-radius:12px;margin-bottom:16px"></div>
-        <div class="skel" style="height:72px;border-radius:12px"></div>
+        <!-- Display name card -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
+          <div class="skel" style="height:18px;width:110px;margin-bottom:14px"></div>
+          <div class="skel" style="height:11px;width:42px;margin-bottom:8px;border-radius:4px;opacity:0.7"></div>
+          <div class="skel" style="height:42px;width:100%;border-radius:8px;margin-bottom:8px"></div>
+          <div class="skel" style="height:10px;width:45px;margin-bottom:14px;border-radius:4px;opacity:0.5"></div>
+          <div class="skel" style="height:42px;width:100px;border-radius:8px"></div>
+        </div>
+        <!-- Sign-in methods card (partial) -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <div class="skel" style="height:18px;width:130px;margin-bottom:16px"></div>
+          <div class="skel" style="height:46px;border-radius:8px;margin-bottom:8px"></div>
+          <div class="skel" style="height:46px;border-radius:8px;opacity:0.7"></div>
+        </div>
       </div>
     </div>
 
@@ -997,7 +1025,7 @@
                   try {
                     await window.supabaseClient.auth.linkIdentity({
                       provider: provider,
-                      options: { redirectTo: window.location.origin + window.BASE_PATH + "/account" },
+                      options: { redirectTo: window.location.origin + window.BASE_PATH + "/account/" },
                     });
                   } catch (error) {
                     window.CardedComponents.showToast(error.message || "Failed to link account.");
