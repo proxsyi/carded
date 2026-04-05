@@ -16,11 +16,6 @@
     <meta name="referrer" content="no-referrer">
     <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <script src="/carded/theme.js?v=4.0.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
-    <script src="/carded/config.js?v=4.0.0" defer></script>
-    <script src="/carded/utils.js?v=4.0.0" defer></script>
-    <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
-    <script src="/carded/auth.js?v=4.0.0" defer></script>
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -74,11 +69,8 @@
 
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
 
-    <script defer>
-      document.addEventListener("DOMContentLoaded", async function () {
-        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: false });
-
-        // Wire theme toggle
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
         var themeToggle = document.getElementById("legal-theme-toggle");
         if (themeToggle) {
           function updateThemeIcons() {
@@ -95,20 +87,6 @@
             if (window.CardedTheme) window.CardedTheme.cycleTheme();
             updateThemeIcons();
           });
-        }
-
-        // Update right-side button based on auth state
-        var loginBtn = document.getElementById("legal-login-btn");
-        if (loginBtn && session && session.user) {
-          var meta = session.user.user_metadata || {};
-          var name = meta.full_name || meta.name || session.user.email || "";
-          var initial = name.charAt(0).toUpperCase() || "?";
-          var profileEl = document.createElement("a");
-          profileEl.className = "account-link";
-          profileEl.href = "/carded/account";
-          profileEl.setAttribute("aria-label", "Open account");
-          profileEl.innerHTML = '<span class="account-link__avatar" aria-hidden="true">' + initial + '</span>';
-          loginBtn.replaceWith(profileEl);
         }
       });
     </script>

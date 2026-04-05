@@ -3114,7 +3114,7 @@
   async function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      await navigator.serviceWorker.register("/carded/sw.js");
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }

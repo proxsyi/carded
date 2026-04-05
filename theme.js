@@ -37,7 +37,9 @@
     } else {
       try { localStorage.setItem(THEME_KEY, val); } catch (_) {}
     }
+    document.documentElement.classList.add("theme-switching");
     applyTheme(val);
+    setTimeout(function () { document.documentElement.classList.remove("theme-switching"); }, 400);
     updateToggleIcons(val);
     // Notify other tabs
     if (typeof BroadcastChannel !== "undefined") {
@@ -83,7 +85,9 @@
     try {
       const bc = new BroadcastChannel("carded-theme");
       bc.onmessage = function (event) {
+        document.documentElement.classList.add("theme-switching");
         applyTheme(event.data);
+        setTimeout(function () { document.documentElement.classList.remove("theme-switching"); }, 400);
         updateToggleIcons(event.data);
       };
     } catch (_) {}

@@ -72,7 +72,7 @@
               <a href="/carded/library" class="eyebrow" style="text-decoration:none">Carded</a>
               <h1 style="margin:0">Settings</h1>
             </div>
-            <a class="ghost-button" href="/carded/library">← Library</a>
+            <button class="ghost-button" type="button" onclick="if (history.length > 1) { history.back(); } else { window.location.assign('/carded/library'); }">← Back</button>
           </div>
 
           <!-- Tabs -->
@@ -500,6 +500,11 @@
           }
         }
 
+        // ── Shared stats state (used by both local and auth paths) ─────────────
+        var activeChart = null;
+        var currentRange = 30;
+        var cachedSessions = [];
+
         // ── LOCAL MODE: clean code path, returns early ─────────────────────────
         var isLocalMode = window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode();
 
@@ -509,31 +514,33 @@
           document.getElementById("settings-view").classList.remove("hidden");
           document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
 
-          // Profile tab: local mode message
+          // Profile tab: local mode message with buttons that clear local mode before navigating
           document.getElementById("tab-profile").innerHTML = [
             '<div class="panel stack">',
             '<h2 style="margin:0 0 8px">Local mode</h2>',
             '<p style="color:var(--text-secondary);margin:0 0 16px">You\'re using Carded without an account. Your data is stored on this device only.</p>',
             '<p style="color:var(--text-secondary);margin:0 0 16px">Create an account to sync your data across devices and keep it safe in the cloud.</p>',
             '<div style="display:flex;gap:10px;flex-wrap:wrap">',
-            '<a class="button" href="/carded/signup">Create Account</a>',
-            '<a class="ghost-button" href="/carded/login">Sign in</a>',
+            '<button class="button" id="local-create-account-btn" type="button">Create Account</button>',
+            '<button class="ghost-button" id="local-signin-btn" type="button">Sign in</button>',
             '</div></div>',
           ].join("");
 
-          // Data tab: replace stats panels, hide chart/sets breakdown, hide account panel
-          var statsGridEl = document.getElementById("stats-grid");
-          if (statsGridEl && statsGridEl.closest(".panel")) {
-            statsGridEl.closest(".panel").innerHTML = '<h2 style="margin:0 0 16px">Stats</h2><p class="meta-copy">Stats are not tracked in local mode.</p>';
-          }
-          var chartWrapEl = document.getElementById("stats-chart-wrap");
-          if (chartWrapEl && chartWrapEl.closest(".panel")) chartWrapEl.closest(".panel").style.display = "none";
-          var setsListEl = document.getElementById("stats-sets-list");
-          if (setsListEl && setsListEl.closest(".panel")) setsListEl.closest(".panel").style.display = "none";
+          document.getElementById("local-create-account-btn").addEventListener("click", function () {
+            localStorage.removeItem("carded_local_mode");
+            window.location.href = "/carded/signup";
+          });
+          document.getElementById("local-signin-btn").addEventListener("click", function () {
+            localStorage.removeItem("carded_local_mode");
+            window.location.href = "/carded/login";
+          });
+
+          // Data tab: hide only the account actions panel (sign out / delete)
           var signoutBtnEl = document.getElementById("signout-button");
           if (signoutBtnEl && signoutBtnEl.closest(".panel")) signoutBtnEl.closest(".panel").style.display = "none";
 
-          // Tab system
+          // Tab system with lazy stats loading on data tab
+          var localStatsLoaded = false;
           document.querySelectorAll("[role='tab']").forEach(function (tab) {
             tab.addEventListener("click", function () {
               document.querySelectorAll("[role='tab']").forEach(function (t) {
@@ -542,8 +549,60 @@
               document.querySelectorAll("[role='tabpanel']").forEach(function (panel) {
                 panel.classList.toggle("hidden", panel.dataset.panel !== tab.dataset.tab);
               });
+              if (tab.dataset.tab === "data" && !localStatsLoaded) {
+                localStatsLoaded = true;
+                loadLocalStats();
+              }
             });
           });
+
+          async function loadLocalStats() {
+            try {
+              var userId = "local-user";
+              var userData = await window.CardedDB.getAllUserData(userId);
+              var progress = userData.progress || [];
+              var sets = userData.sets || [];
+              var cards = userData.cards || [];
+              var localStats = userData.stats || {};
+
+              var mastered = progress.filter(function (p) { return (p.points || 0) === 0 && p.last_seen; }).length;
+              var needsReview = progress.filter(function (p) { return (p.points || 0) > 0; }).length;
+              var totalCorrect = progress.reduce(function (acc, p) { return acc + (p.correct_count || 0); }, 0);
+              var totalWrong = progress.reduce(function (acc, p) { return acc + (p.incorrect_count || 0); }, 0);
+              var totalAnswers = totalCorrect + totalWrong;
+              var accuracy = totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : null;
+
+              var currentStreak = localStats.current_streak || 0;
+              var longestStreak = localStats.longest_streak || 0;
+              var totalReviewed = localStats.total_cards_reviewed || 0;
+              var totalSessions = localStats.total_sessions || 0;
+
+              document.getElementById("stats-reviewed").textContent = String(totalReviewed);
+              document.getElementById("stats-streak").textContent = String(currentStreak) + " day" + (currentStreak !== 1 ? "s" : "");
+              document.getElementById("stats-streak-best").textContent = "Best: " + longestStreak;
+              document.getElementById("stats-mastered").textContent = String(mastered);
+              document.getElementById("stats-accuracy").textContent = accuracy !== null ? accuracy + "%" : "—";
+              document.getElementById("stats-needs-review").textContent = String(needsReview);
+              document.getElementById("stats-sessions").textContent = String(totalSessions);
+
+              var sessions = await window.CardedDB.getStudySessions(userId);
+              cachedSessions = sessions;
+              renderChart(currentRange);
+              renderSetBreakdown(sets, cards, progress);
+
+              document.querySelectorAll("[data-range]").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                  document.querySelectorAll("[data-range]").forEach(function (b) { b.classList.remove("active"); });
+                  btn.classList.add("active");
+                  currentRange = parseInt(btn.dataset.range, 10);
+                  renderChart(currentRange);
+                });
+              });
+            } catch (_e) {
+              var sg = document.getElementById("stats-grid");
+              if (sg) sg.innerHTML = '<p class="meta-copy">Failed to load stats.</p>';
+            }
+          }
 
           wirePreferences();
           wireImportExport(localSession);
@@ -956,10 +1015,6 @@
         wirePreferences();
 
         // ── Data tab ───────────────────────────────────────────────────────────
-        var activeChart = null;
-        var currentRange = 30;
-        var cachedSessions = [];
-
         async function loadStats(sess) {
           statsLoaded = true;
           try {
