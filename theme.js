@@ -31,8 +31,11 @@
   function setTheme(theme) {
     const val = theme === "dark" || theme === "light" || theme === "auto" ? theme : "auto";
     try { localStorage.setItem(THEME_KEY, val); } catch (_) {}
+    // Enable transition only for user-triggered changes, not page-load application
+    document.documentElement.classList.add("theme-animated");
     applyTheme(val);
     updateToggleIcons(val);
+    setTimeout(function () { document.documentElement.classList.remove("theme-animated"); }, 400);
     // Notify other tabs
     if (typeof BroadcastChannel !== "undefined") {
       try {
