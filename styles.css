@@ -126,27 +126,6 @@
   --folder-accent: rgba(149, 128, 255, 0.2);
 
   color-scheme: dark;
-
-  /* Transition all registered color variables at the root — every element using var(--x) gets perfectly synced interpolation */
-  transition:
-    --bg-primary 0.3s ease, --bg-secondary 0.3s ease, --bg-tertiary 0.3s ease, --bg-topbar 0.3s ease,
-    --bg-auth 0.3s ease, --bg-toast 0.3s ease, --bg-overlay 0.3s ease,
-    --border 0.3s ease, --border-topbar 0.3s ease,
-    --text-primary 0.3s ease, --text-secondary 0.3s ease, --text-tertiary 0.3s ease,
-    --accent 0.3s ease, --accent-hover 0.3s ease, --accent-active 0.3s ease,
-    --accent-subtle 0.3s ease, --accent-glow 0.3s ease, --accent-border 0.3s ease,
-    --accent-border-mid 0.3s ease, --accent-ring 0.3s ease, --accent-ring-mid 0.3s ease,
-    --accent-brand-from 0.3s ease, --accent-brand-to 0.3s ease,
-    --accent-active-bg 0.3s ease, --accent-active-border 0.3s ease,
-    --button-text 0.3s ease, --focus-ring 0.3s ease,
-    --correct 0.3s ease, --incorrect 0.3s ease,
-    --correct-bg 0.3s ease, --correct-border 0.3s ease,
-    --incorrect-bg 0.3s ease, --incorrect-border 0.3s ease, --error-text 0.3s ease,
-    --danger-bg 0.3s ease, --danger-border 0.3s ease, --danger-text 0.3s ease, --danger-hover 0.3s ease,
-    --warning-bg 0.3s ease, --warning-border 0.3s ease, --warning-text 0.3s ease,
-    --error-overlay-bg 0.3s ease, --error-overlay-border 0.3s ease,
-    --surface-1 0.3s ease, --surface-2 0.3s ease, --surface-3 0.3s ease,
-    --surface-4 0.3s ease, --surface-hover 0.3s ease, --folder-accent 0.3s ease;
 }
 
 /* ── Light theme (TN Trooper Orange) ─────────────────────────────────────── */
@@ -215,6 +194,29 @@
   --folder-accent: rgba(196, 116, 44, 0.2);
 
   color-scheme: light;
+}
+
+/* Only animate theme variables when the user explicitly changes the theme (class added by theme.js) */
+:root.theme-animated {
+  transition:
+    --bg-primary 0.3s ease, --bg-secondary 0.3s ease, --bg-tertiary 0.3s ease, --bg-topbar 0.3s ease,
+    --bg-auth 0.3s ease, --bg-toast 0.3s ease, --bg-overlay 0.3s ease,
+    --border 0.3s ease, --border-topbar 0.3s ease,
+    --text-primary 0.3s ease, --text-secondary 0.3s ease, --text-tertiary 0.3s ease,
+    --accent 0.3s ease, --accent-hover 0.3s ease, --accent-active 0.3s ease,
+    --accent-subtle 0.3s ease, --accent-glow 0.3s ease, --accent-border 0.3s ease,
+    --accent-border-mid 0.3s ease, --accent-ring 0.3s ease, --accent-ring-mid 0.3s ease,
+    --accent-brand-from 0.3s ease, --accent-brand-to 0.3s ease,
+    --accent-active-bg 0.3s ease, --accent-active-border 0.3s ease,
+    --button-text 0.3s ease, --focus-ring 0.3s ease,
+    --correct 0.3s ease, --incorrect 0.3s ease,
+    --correct-bg 0.3s ease, --correct-border 0.3s ease,
+    --incorrect-bg 0.3s ease, --incorrect-border 0.3s ease, --error-text 0.3s ease,
+    --danger-bg 0.3s ease, --danger-border 0.3s ease, --danger-text 0.3s ease, --danger-hover 0.3s ease,
+    --warning-bg 0.3s ease, --warning-border 0.3s ease, --warning-text 0.3s ease,
+    --error-overlay-bg 0.3s ease, --error-overlay-border 0.3s ease,
+    --surface-1 0.3s ease, --surface-2 0.3s ease, --surface-3 0.3s ease,
+    --surface-4 0.3s ease, --surface-hover 0.3s ease, --folder-accent 0.3s ease;
 }
 
 *,
