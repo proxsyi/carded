@@ -176,7 +176,7 @@
             var initial = name.charAt(0).toUpperCase() || "?";
             var profileEl = document.createElement("a");
             profileEl.className = "account-link";
-            profileEl.href = "/carded/account";
+            profileEl.href = "/carded/account/";
             profileEl.setAttribute("aria-label", "Open account");
             profileEl.innerHTML = '<span class="account-link__avatar" aria-hidden="true">' + initial + '</span>';
             loginBtn.replaceWith(profileEl);

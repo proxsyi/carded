@@ -71,7 +71,7 @@
     const response = await window.supabaseClient.auth.signInWithOAuth({
       provider: provider,
       options: {
-        redirectTo: window.location.origin + window.BASE_PATH + "/library",
+        redirectTo: window.location.origin + window.BASE_PATH + "/login",
       },
     });
     if (response.error) throw response.error;

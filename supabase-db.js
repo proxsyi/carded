@@ -301,8 +301,9 @@
     const deletionDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
     return unwrap(
       () => requireSupabase().from("user_profiles")
-        .upsert({ user_id: userId, pending_deletion: true, deletion_date: deletionDate })
-        .eq("user_id", userId)
+        .upsert({ user_id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "user_id" })
+        .select()
+        .single()
     );
   }
 

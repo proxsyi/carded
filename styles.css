@@ -1,3 +1,54 @@
+/* ── @property: register all theme color variables for smooth :root transitions ── */
+@property --bg-primary { syntax: '<color>'; inherits: true; initial-value: #1e1e2e; }
+@property --bg-secondary { syntax: '<color>'; inherits: true; initial-value: #26263a; }
+@property --bg-tertiary { syntax: '<color>'; inherits: true; initial-value: #31324a; }
+@property --bg-topbar { syntax: '<color>'; inherits: true; initial-value: #17171b; }
+@property --bg-auth { syntax: '<color>'; inherits: true; initial-value: rgba(28,28,33,0.94); }
+@property --bg-toast { syntax: '<color>'; inherits: true; initial-value: rgba(28,28,33,0.96); }
+@property --bg-overlay { syntax: '<color>'; inherits: true; initial-value: rgba(8,8,11,0.72); }
+@property --border { syntax: '<color>'; inherits: true; initial-value: #333340; }
+@property --border-topbar { syntax: '<color>'; inherits: true; initial-value: rgba(51,51,64,0.72); }
+@property --text-primary { syntax: '<color>'; inherits: true; initial-value: #e8e8ed; }
+@property --text-secondary { syntax: '<color>'; inherits: true; initial-value: #9494a3; }
+@property --text-tertiary { syntax: '<color>'; inherits: true; initial-value: rgba(148,148,163,0.5); }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #9580ff; }
+@property --accent-hover { syntax: '<color>'; inherits: true; initial-value: #b0a0ff; }
+@property --accent-active { syntax: '<color>'; inherits: true; initial-value: #7c6de0; }
+@property --accent-subtle { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.08); }
+@property --accent-glow { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.12); }
+@property --accent-border { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.26); }
+@property --accent-border-mid { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.24); }
+@property --accent-ring { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.35); }
+@property --accent-ring-mid { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.25); }
+@property --accent-brand-from { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.18); }
+@property --accent-brand-to { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.04); }
+@property --accent-active-bg { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.18); }
+@property --accent-active-border { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.4); }
+@property --button-text { syntax: '<color>'; inherits: true; initial-value: #121219; }
+@property --focus-ring { syntax: '<color>'; inherits: true; initial-value: #7c3aed; }
+@property --correct { syntax: '<color>'; inherits: true; initial-value: #4ade80; }
+@property --incorrect { syntax: '<color>'; inherits: true; initial-value: #f87171; }
+@property --correct-bg { syntax: '<color>'; inherits: true; initial-value: rgba(74,222,128,0.14); }
+@property --correct-border { syntax: '<color>'; inherits: true; initial-value: rgba(74,222,128,0.5); }
+@property --incorrect-bg { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.14); }
+@property --incorrect-border { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.5); }
+@property --error-text { syntax: '<color>'; inherits: true; initial-value: #ffb4b4; }
+@property --danger-bg { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.12); }
+@property --danger-border { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.32); }
+@property --danger-text { syntax: '<color>'; inherits: true; initial-value: #ffd5d5; }
+@property --danger-hover { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.2); }
+@property --warning-bg { syntax: '<color>'; inherits: true; initial-value: rgba(234,179,8,0.12); }
+@property --warning-border { syntax: '<color>'; inherits: true; initial-value: rgba(234,179,8,0.3); }
+@property --warning-text { syntax: '<color>'; inherits: true; initial-value: #fde68a; }
+@property --error-overlay-bg { syntax: '<color>'; inherits: true; initial-value: rgba(127,29,29,0.95); }
+@property --error-overlay-border { syntax: '<color>'; inherits: true; initial-value: rgba(248,113,113,0.4); }
+@property --surface-1 { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.02); }
+@property --surface-2 { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.03); }
+@property --surface-3 { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.04); }
+@property --surface-4 { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.05); }
+@property --surface-hover { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.15); }
+@property --folder-accent { syntax: '<color>'; inherits: true; initial-value: rgba(149,128,255,0.2); }
+
 :root {
   /* Backgrounds */
   --bg-primary: #1e1e2e;
@@ -75,6 +126,27 @@
   --folder-accent: rgba(149, 128, 255, 0.2);
 
   color-scheme: dark;
+
+  /* Transition all registered color variables at the root — every element using var(--x) gets perfectly synced interpolation */
+  transition:
+    --bg-primary 0.3s ease, --bg-secondary 0.3s ease, --bg-tertiary 0.3s ease, --bg-topbar 0.3s ease,
+    --bg-auth 0.3s ease, --bg-toast 0.3s ease, --bg-overlay 0.3s ease,
+    --border 0.3s ease, --border-topbar 0.3s ease,
+    --text-primary 0.3s ease, --text-secondary 0.3s ease, --text-tertiary 0.3s ease,
+    --accent 0.3s ease, --accent-hover 0.3s ease, --accent-active 0.3s ease,
+    --accent-subtle 0.3s ease, --accent-glow 0.3s ease, --accent-border 0.3s ease,
+    --accent-border-mid 0.3s ease, --accent-ring 0.3s ease, --accent-ring-mid 0.3s ease,
+    --accent-brand-from 0.3s ease, --accent-brand-to 0.3s ease,
+    --accent-active-bg 0.3s ease, --accent-active-border 0.3s ease,
+    --button-text 0.3s ease, --focus-ring 0.3s ease,
+    --correct 0.3s ease, --incorrect 0.3s ease,
+    --correct-bg 0.3s ease, --correct-border 0.3s ease,
+    --incorrect-bg 0.3s ease, --incorrect-border 0.3s ease, --error-text 0.3s ease,
+    --danger-bg 0.3s ease, --danger-border 0.3s ease, --danger-text 0.3s ease, --danger-hover 0.3s ease,
+    --warning-bg 0.3s ease, --warning-border 0.3s ease, --warning-text 0.3s ease,
+    --error-overlay-bg 0.3s ease, --error-overlay-border 0.3s ease,
+    --surface-1 0.3s ease, --surface-2 0.3s ease, --surface-3 0.3s ease,
+    --surface-4 0.3s ease, --surface-hover 0.3s ease, --folder-accent 0.3s ease;
 }
 
 /* ── Light theme (TN Trooper Orange) ─────────────────────────────────────── */
@@ -150,19 +222,6 @@
 *::after {
   box-sizing: border-box;
   outline: none;
-  transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
-}
-
-/* Force all elements to the same 0.35s timing during theme switch */
-html.theme-switching *,
-html.theme-switching *::before,
-html.theme-switching *::after {
-  transition: background-color 0.35s ease,
-    color 0.35s ease,
-    border-color 0.35s ease,
-    box-shadow 0.35s ease,
-    fill 0.35s ease,
-    stroke 0.35s ease !important;
 }
 
 /* Prevent text selection on interactive chrome */
@@ -464,7 +523,7 @@ select:focus-visible,
   padding: 0 16px;
   border-radius: 8px;
   border: 1px solid transparent;
-  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, transform 0.2s ease, box-shadow 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.15s ease;
 }
 
 .button {
@@ -587,7 +646,7 @@ select:focus-visible,
   min-height: 190px;
   padding: 20px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.15s ease;
 }
 
 .tile:hover {
@@ -705,7 +764,7 @@ select:focus-visible,
 
 .landing-grid .panel {
   cursor: default;
-  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.15s ease;
 }
 
 .landing-grid .panel:hover {
@@ -961,7 +1020,7 @@ select:focus-visible,
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, transform 0.2s ease, box-shadow 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.15s ease;
   min-height: 56px;
   background: transparent;
 }
@@ -1014,7 +1073,7 @@ select:focus-visible,
   background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+  transition: transform 0.15s ease;
   font-size: 0.95rem;
 }
 .quiz-choice:hover:not(:disabled) {
@@ -1087,7 +1146,7 @@ select:focus-visible,
   background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, transform 0.2s ease;
+  transition: transform 0.2s ease;
   text-align: left;
   width: 100%;
 }
@@ -1542,7 +1601,6 @@ select:focus-visible,
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--text-secondary);
-  transition: color 0.35s ease, border-color 0.35s ease, background-color 0.35s ease;
   margin-bottom: -1px;
   white-space: nowrap;
   border-radius: 0;
@@ -1635,7 +1693,6 @@ select:focus-visible,
   border: 2px solid var(--border);
   background: var(--bg-secondary);
   cursor: pointer;
-  transition: border-color 0.35s ease, background-color 0.35s ease, color 0.35s ease;
   text-align: center;
 }
 
@@ -1988,7 +2045,7 @@ kbd {
   box-shadow: var(--shadow-hover, 0 28px 70px rgba(0,0,0,0.36));
   padding: 20px;
   pointer-events: all;
-  transition: opacity 0.25s ease, background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+  transition: opacity 0.25s ease;
 }
 
 .wt-header {

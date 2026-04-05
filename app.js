@@ -845,13 +845,11 @@
       ? "L"
       : escapeHtml((window.CardedUtils.safeGet("carded_display_name") || state.userEmail || "U").slice(0, 1).toUpperCase());
     els.headerActions.innerHTML = `
-      <button class="ghost-button" data-action="create-folder">New folder</button>
-      <button class="button" data-action="create-set">New set</button>
       <button class="icon-button" data-theme-toggle aria-label="${themeEff === "dark" ? "Switch to light theme" : "Switch to dark theme"}">
         <span class="theme-icon-moon" aria-hidden="true" ${themeEff !== "dark" ? 'style="display:none"' : ""}>🌙</span>
         <span class="theme-icon-sun" aria-hidden="true" ${themeEff === "dark" ? 'style="display:none"' : ""}>☀️</span>
       </button>
-      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="${state.localMode ? "Settings (local mode)" : "Open account"}">
+      <a class="account-link" href="${window.BASE_PATH}/account/" aria-label="${state.localMode ? "Settings (local mode)" : "Open account"}">
         <span class="account-link__avatar${state.localMode ? " local-mode-avatar" : ""}" aria-hidden="true">${avatarInitial}</span>
       </a>
     `;
@@ -893,6 +891,10 @@
             <h1 class="section-title">Your library</h1>
             <p class="section-copy">Folders for courses, standalone sets for everything else.</p>
           </div>
+          <div class="control-row">
+            <button class="ghost-button" data-action="create-folder">New folder</button>
+            <button class="button" data-action="create-set">New set</button>
+          </div>
         </div>
         ${renderLibraryControls()}
         ${renderStandaloneDropzone()}
@@ -901,10 +903,7 @@
             ${folders.map(renderFolderTile).join("")}
             ${standaloneSets.map((item) => renderSetTile(item, null)).join("")}
           </div>
-        ` : renderEmptyState("No sets yet — create your first one", [
-          { action: "create-set", label: "Create set", primary: true },
-          { action: "create-folder", label: "Create folder" }
-        ])}
+        ` : renderEmptyState("No sets yet — create your first one", [])}
       </section>
     `));
 
