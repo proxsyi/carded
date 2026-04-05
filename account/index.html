@@ -334,7 +334,225 @@
           });
         });
 
-        // ── Recovery mode ──────────────────────────────────────────────────────
+        // ── Shared helpers ─────────────────────────────────────────────────────
+        function escHtml(str) {
+          return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function parseCardLine(line) {
+          var trimmed = line.trim();
+          if (!trimmed) return null;
+          var sep = -1;
+          if (trimmed.includes(" | ")) sep = trimmed.indexOf(" | ");
+          else if (trimmed.includes("\t")) sep = trimmed.indexOf("\t");
+          else if (trimmed.includes(",")) sep = trimmed.indexOf(",");
+          if (sep < 0) return null;
+          var term = trimmed.slice(0, sep).trim();
+          var def = trimmed.slice(sep + (trimmed[sep] === " " ? 3 : 1)).trim();
+          return term && def ? { term: term, definition: def } : null;
+        }
+
+        async function importTxtFile(file, session) {
+          var text = await file.text();
+          var lines = text.split(/\r?\n/);
+          var cards = lines.map(parseCardLine).filter(Boolean);
+          if (!cards.length) { window.CardedComponents.showToast("No cards found in file."); return; }
+          var setName = file.name.replace(/\.txt$/i, "").trim().slice(0, 30);
+          var setId = crypto.randomUUID();
+          await window.CardedDB.put("sets", { id: setId, user_id: session.user.id, folder_id: null, name: setName, order: 0, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          for (var i = 0; i < cards.length; i++) {
+            var c = cards[i];
+            await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: session.user.id, set_id: setId, term: c.term, definition: c.definition, order: i, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+          }
+          window.CardedComponents.showToast("Imported " + cards.length + " cards into \u201c" + setName + "\u201d");
+        }
+
+        async function importZipFile(file, session) {
+          if (typeof window.JSZip === "undefined") { window.CardedComponents.showToast("Zip support unavailable. Try again when online."); return; }
+          var zip;
+          try { zip = await window.JSZip.loadAsync(file); } catch (_) { window.CardedComponents.showToast("Could not read zip file."); return; }
+          var txtFiles = Object.keys(zip.files).filter(function (n) { return !zip.files[n].dir && n.endsWith(".txt"); });
+          if (!txtFiles.length) { window.CardedComponents.showToast("No .txt files found in zip."); return; }
+          var imported = 0;
+          var setsCreated = 0;
+          for (var fi = 0; fi < txtFiles.length; fi++) {
+            var filePath = txtFiles[fi];
+            var parts = filePath.split("/");
+            var fileName = parts[parts.length - 1];
+            var setName = fileName.replace(/\.txt$/i, "").trim().slice(0, 30);
+            if (!setName) continue;
+            var text = await zip.files[filePath].async("string");
+            var lines = text.split(/\r?\n/);
+            var cards = lines.map(parseCardLine).filter(Boolean);
+            if (!cards.length) continue;
+            var setId = crypto.randomUUID();
+            await window.CardedDB.put("sets", { id: setId, user_id: session.user.id, folder_id: null, name: setName, order: setsCreated, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+            for (var ci = 0; ci < cards.length; ci++) {
+              var card = cards[ci];
+              await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: session.user.id, set_id: setId, term: card.term, definition: card.definition, order: ci, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+            }
+            imported += cards.length;
+            setsCreated += 1;
+          }
+          window.CardedComponents.showToast("Imported " + imported + " cards across " + setsCreated + " sets.");
+        }
+
+        function wireImportExport(session) {
+          var importInput = document.getElementById("import-file-input");
+          var importMode = "txt";
+          document.getElementById("import-txt-btn").addEventListener("click", function () {
+            importMode = "txt";
+            importInput.accept = ".txt,text/plain";
+            importInput.click();
+          });
+          document.getElementById("import-zip-btn").addEventListener("click", function () {
+            importMode = "zip";
+            importInput.accept = ".zip,application/zip";
+            importInput.click();
+          });
+          importInput.addEventListener("change", async function () {
+            var file = importInput.files[0];
+            if (!file) return;
+            importInput.value = "";
+            if (file.name.endsWith(".zip")) {
+              await importZipFile(file, session);
+            } else {
+              await importTxtFile(file, session);
+            }
+          });
+          document.getElementById("export-all-btn").addEventListener("click", async function () {
+            var btn = this;
+            window.CardedUtils.withLoading(btn, async function () {
+              var userId = session.user.id;
+              var userData = await window.CardedDB.getAllUserData(userId);
+              var sets = userData.sets || [];
+              var cards = userData.cards || [];
+              var folders = userData.folders || [];
+              function setCards(setId) {
+                return cards.filter(function (c) { return c.set_id === setId; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+              }
+              function toTxt(setId) {
+                return setCards(setId).map(function (c) { return c.term + " | " + c.definition; }).join("\n");
+              }
+              if (typeof window.JSZip !== "undefined") {
+                var zip = new window.JSZip();
+                var date = new Date().toISOString().slice(0, 10);
+                folders.forEach(function (folder) {
+                  var folderSets = sets.filter(function (s) { return s.folder_id === folder.id; });
+                  var safeName = folder.name.replace(/[/\\?%*:|"<>]/g, "-");
+                  folderSets.forEach(function (set) {
+                    var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
+                    zip.file(safeName + "/" + setSafe + ".txt", toTxt(set.id));
+                  });
+                });
+                sets.filter(function (s) { return !s.folder_id; }).forEach(function (set) {
+                  var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
+                  zip.file(setSafe + ".txt", toTxt(set.id));
+                });
+                var blob = await zip.generateAsync({ type: "blob" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url; a.download = "Carded_Export_" + date + ".zip";
+                document.body.appendChild(a); a.click(); a.remove();
+                URL.revokeObjectURL(url);
+                window.CardedComponents.showToast("All data exported");
+              } else {
+                var sections = sets.map(function (set) { return "# " + set.name + "\n" + toTxt(set.id); });
+                var blob2 = new Blob([sections.join("\n\n")], { type: "text/plain;charset=utf-8" });
+                var url2 = URL.createObjectURL(blob2);
+                var a2 = document.createElement("a");
+                a2.href = url2; a2.download = "carded-backup.txt";
+                document.body.appendChild(a2); a2.click(); a2.remove();
+                URL.revokeObjectURL(url2);
+                window.CardedComponents.showToast("Backup exported");
+              }
+            });
+          });
+        }
+
+        function wirePreferences() {
+          var currentTheme = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "auto";
+          function markThemeSelected(theme) {
+            document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+              btn.setAttribute("aria-pressed", btn.dataset.themeChoice === theme ? "true" : "false");
+            });
+          }
+          markThemeSelected(currentTheme);
+          document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+            btn.addEventListener("mouseenter", function () {
+              if (window.CardedTheme) window.CardedTheme.applyTheme(btn.dataset.themeChoice);
+            });
+            btn.addEventListener("mouseleave", function () {
+              if (window.CardedTheme) window.CardedTheme.applyTheme(currentTheme);
+            });
+            btn.addEventListener("click", function () {
+              currentTheme = btn.dataset.themeChoice;
+              if (window.CardedTheme) window.CardedTheme.setTheme(currentTheme);
+              markThemeSelected(currentTheme);
+            });
+          });
+          var wtBtn = document.getElementById("show-walkthrough-btn");
+          if (wtBtn) {
+            wtBtn.addEventListener("click", function () {
+              try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+              window.location.assign(window.BASE_PATH + "/library");
+            });
+          }
+        }
+
+        // ── LOCAL MODE: clean code path, returns early ─────────────────────────
+        var isLocalMode = window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode();
+
+        if (isLocalMode) {
+          var localSession = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
+
+          document.getElementById("settings-view").classList.remove("hidden");
+          document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
+
+          // Profile tab: local mode message
+          document.getElementById("tab-profile").innerHTML = [
+            '<div class="panel stack">',
+            '<h2 style="margin:0 0 8px">Local mode</h2>',
+            '<p style="color:var(--text-secondary);margin:0 0 16px">You\'re using Carded without an account. Your data is stored on this device only.</p>',
+            '<p style="color:var(--text-secondary);margin:0 0 16px">Create an account to sync your data across devices and keep it safe in the cloud.</p>',
+            '<div style="display:flex;gap:10px;flex-wrap:wrap">',
+            '<a class="button" href="/carded/signup">Create Account</a>',
+            '<a class="ghost-button" href="/carded/login">Sign in</a>',
+            '</div></div>',
+          ].join("");
+
+          // Data tab: replace stats panels, hide chart/sets breakdown, hide account panel
+          var statsGridEl = document.getElementById("stats-grid");
+          if (statsGridEl && statsGridEl.closest(".panel")) {
+            statsGridEl.closest(".panel").innerHTML = '<h2 style="margin:0 0 16px">Stats</h2><p class="meta-copy">Stats are not tracked in local mode.</p>';
+          }
+          var chartWrapEl = document.getElementById("stats-chart-wrap");
+          if (chartWrapEl && chartWrapEl.closest(".panel")) chartWrapEl.closest(".panel").style.display = "none";
+          var setsListEl = document.getElementById("stats-sets-list");
+          if (setsListEl && setsListEl.closest(".panel")) setsListEl.closest(".panel").style.display = "none";
+          var signoutBtnEl = document.getElementById("signout-button");
+          if (signoutBtnEl && signoutBtnEl.closest(".panel")) signoutBtnEl.closest(".panel").style.display = "none";
+
+          // Tab system
+          document.querySelectorAll("[role='tab']").forEach(function (tab) {
+            tab.addEventListener("click", function () {
+              document.querySelectorAll("[role='tab']").forEach(function (t) {
+                t.setAttribute("aria-selected", t.dataset.tab === tab.dataset.tab ? "true" : "false");
+              });
+              document.querySelectorAll("[role='tabpanel']").forEach(function (panel) {
+                panel.classList.toggle("hidden", panel.dataset.panel !== tab.dataset.tab);
+              });
+            });
+          });
+
+          wirePreferences();
+          wireImportExport(localSession);
+          return; // Done — skip all auth-dependent code below
+        }
+
+        // ── AUTHENTICATED MODE ─────────────────────────────────────────────────
+
+        // Recovery mode check
         var isRecovery = window.CardedAuth && typeof window.CardedAuth.isPasswordRecoveryMode === "function"
           ? window.CardedAuth.isPasswordRecoveryMode()
           : false;
@@ -368,38 +586,16 @@
           });
         }
 
-        // ── Auth guard ─────────────────────────────────────────────────────────
-        var isLocalMode = window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode();
-        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: !isLocalMode });
-        if (!isLocalMode && !session) return;
-        if (isLocalMode && !session) session = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
+        // Auth guard (auth required for non-local mode)
+        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        if (!session) return;
 
         document.getElementById("settings-view").classList.remove("hidden");
         document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
 
-        // Show local mode UI if applicable
-        if (isLocalMode) {
-          document.getElementById("tab-profile").innerHTML = `
-            <div class="panel stack">
-              <h2 style="margin:0 0 8px">Local mode</h2>
-              <p style="color:var(--text-secondary);margin:0 0 16px">You're using Carded without an account. Your data is stored on this device only.</p>
-              <p style="color:var(--text-secondary);margin:0 0 16px">Create an account to sync your data across devices and keep it safe in the cloud.</p>
-              <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <a class="button" href="/carded/signup">Create Account</a>
-                <a class="ghost-button" href="/carded/login">Sign in</a>
-              </div>
-            </div>
-          `;
-          document.getElementById("tab-data").querySelector(".panel:first-child").innerHTML = `
-            <h2 style="margin:0 0 16px">Stats</h2>
-            <p class="meta-copy">Stats are not tracked in local mode.</p>
-          `;
-          // Hide account-only actions in local mode
-          var deleteBtn = document.getElementById("delete-account-button");
-          if (deleteBtn) deleteBtn.style.display = "none";
-        }
-
         // ── Tab system ─────────────────────────────────────────────────────────
+        var statsLoaded = false;
+
         function switchTab(name) {
           document.querySelectorAll("[role='tab']").forEach(function (tab) {
             var active = tab.dataset.tab === name;
@@ -408,8 +604,7 @@
           document.querySelectorAll("[role='tabpanel']").forEach(function (panel) {
             panel.classList.toggle("hidden", panel.dataset.panel !== name);
           });
-          // Lazy-load data tab stats on first open
-          if (name === "data" && !statsLoaded && !isLocalMode) {
+          if (name === "data" && !statsLoaded) {
             loadStats(session);
           }
         }
@@ -420,7 +615,7 @@
           });
         });
 
-        // ── Helpers ────────────────────────────────────────────────────────────
+        // ── Profile tab helpers ────────────────────────────────────────────────
         function getInitial(displayName, email) {
           var name = displayName || email || "?";
           return name.trim().charAt(0).toUpperCase();
@@ -456,7 +651,6 @@
         var currentDisplayName = "";
 
         async function loadProfileTab(sess) {
-          // Display name
           var metaName = sess.user.user_metadata && sess.user.user_metadata.full_name || "";
           currentDisplayName = metaName;
           try {
@@ -471,15 +665,11 @@
           updateCharCounter("display-name-counter", currentDisplayName.length, 30);
           if (currentDisplayName) window.CardedUtils.safeSet("carded_display_name", currentDisplayName);
 
-          // Profile picture
           var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
           setActivePfpBtn(pref);
           await applyPfpPreference(pref, sess);
-
-          // Auth provider + linking
           await loadAuthProviders(sess);
 
-          // Show password form only for email users
           try {
             var { data: { user } } = await window.supabaseClient.auth.getUser();
             var identities = user.identities || [];
@@ -497,7 +687,6 @@
               showProfilePicImg(avatarUrl);
               return;
             }
-            // Fallback to initial
             pref = "initial";
           }
           if (pref === "custom") {
@@ -513,79 +702,77 @@
           showProfilePicInitial(getInitial(currentDisplayName, sess.user.email));
         }
 
-        if (!isLocalMode) {
-          // Display name char counter
-          var displayNameInput = document.getElementById("display-name");
-          if (displayNameInput) {
-            displayNameInput.addEventListener("input", function (event) {
-              updateCharCounter("display-name-counter", event.currentTarget.value.length, 30);
-            });
-          }
+        // Display name char counter
+        var displayNameInput = document.getElementById("display-name");
+        if (displayNameInput) {
+          displayNameInput.addEventListener("input", function (event) {
+            updateCharCounter("display-name-counter", event.currentTarget.value.length, 30);
+          });
+        }
 
-          // Save display name
-          var saveDisplayNameBtn = document.getElementById("save-display-name");
-          if (saveDisplayNameBtn) {
-            saveDisplayNameBtn.addEventListener("click", async function () {
-              var name = document.getElementById("display-name").value.trim();
-              var btn = this;
-              window.CardedUtils.withLoading(btn, async function () {
-                try {
-                  await window.CardedSupabaseDB.upsertProfile(session.user.id, { display_name: name });
-                  currentDisplayName = name;
-                  window.CardedUtils.safeSet("carded_display_name", name);
-                  var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
-                  if (pref === "initial") {
-                    showProfilePicInitial(getInitial(name, session.user.email));
-                  }
-                  window.CardedComponents.showToast("Name saved.");
-                } catch (error) {
-                  window.CardedComponents.showToast(error.message || "Failed to save name.");
+        // Save display name
+        var saveDisplayNameBtn = document.getElementById("save-display-name");
+        if (saveDisplayNameBtn) {
+          saveDisplayNameBtn.addEventListener("click", async function () {
+            var name = document.getElementById("display-name").value.trim();
+            var btn = this;
+            window.CardedUtils.withLoading(btn, async function () {
+              try {
+                await window.CardedSupabaseDB.upsertProfile(session.user.id, { display_name: name });
+                currentDisplayName = name;
+                window.CardedUtils.safeSet("carded_display_name", name);
+                var pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+                if (pref === "initial") {
+                  showProfilePicInitial(getInitial(name, session.user.email));
                 }
-              });
-            });
-          }
-
-          // Profile picture preference buttons
-          document.querySelectorAll("[data-pfp]").forEach(function (btn) {
-            btn.addEventListener("click", async function () {
-              var pref = btn.dataset.pfp;
-              if (pref === "custom") {
-                var pfpInput = document.getElementById("pfp-file-input");
-                if (pfpInput) pfpInput.click();
-                return;
+                window.CardedComponents.showToast("Name saved.");
+              } catch (error) {
+                window.CardedComponents.showToast(error.message || "Failed to save name.");
               }
-              if (pref === "provider") {
-                var avatarUrl = session.user.user_metadata && session.user.user_metadata.avatar_url;
-                if (!avatarUrl) {
-                  window.CardedComponents.showToast("No provider photo available for your account.");
-                  return;
-                }
-              }
-              window.CardedUtils.safeSet("carded_pfp_preference", pref);
-              setActivePfpBtn(pref);
-              await applyPfpPreference(pref, session);
             });
           });
+        }
 
-          // File input for custom photo
-          var pfpFileInput = document.getElementById("pfp-file-input");
-          if (pfpFileInput) {
-            pfpFileInput.addEventListener("change", function (event) {
-              var file = event.currentTarget.files && event.currentTarget.files[0];
-              if (!file) return;
-              if (file.size > 2 * 1024 * 1024) {
-                window.CardedComponents.showToast("Photo must be under 2MB.");
-                event.currentTarget.value = "";
+        // Profile picture preference buttons
+        document.querySelectorAll("[data-pfp]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var pref = btn.dataset.pfp;
+            if (pref === "custom") {
+              var pfpInput = document.getElementById("pfp-file-input");
+              if (pfpInput) pfpInput.click();
+              return;
+            }
+            if (pref === "provider") {
+              var avatarUrl = session.user.user_metadata && session.user.user_metadata.avatar_url;
+              if (!avatarUrl) {
+                window.CardedComponents.showToast("No provider photo available for your account.");
                 return;
               }
-              var reader = new FileReader();
-              reader.onload = function (e) {
-                openCropModal(e.target.result);
-              };
-              reader.readAsDataURL(file);
+            }
+            window.CardedUtils.safeSet("carded_pfp_preference", pref);
+            setActivePfpBtn(pref);
+            await applyPfpPreference(pref, session);
+          });
+        });
+
+        // File input for custom photo
+        var pfpFileInput = document.getElementById("pfp-file-input");
+        if (pfpFileInput) {
+          pfpFileInput.addEventListener("change", function (event) {
+            var file = event.currentTarget.files && event.currentTarget.files[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+              window.CardedComponents.showToast("Photo must be under 2MB.");
               event.currentTarget.value = "";
-            });
-          }
+              return;
+            }
+            var reader = new FileReader();
+            reader.onload = function (e) {
+              openCropModal(e.target.result);
+            };
+            reader.readAsDataURL(file);
+            event.currentTarget.value = "";
+          });
         }
 
         // Crop modal logic
@@ -596,8 +783,6 @@
           var cropImg = document.getElementById("crop-image");
           cropImg.src = dataUrl;
           cropModal.classList.remove("hidden");
-
-          // Init Cropper.js after image loads
           cropImg.onload = function () {
             if (cropper) { cropper.destroy(); cropper = null; }
             if (window.Cropper) {
@@ -636,7 +821,6 @@
               if (cropper) {
                 canvas = cropper.getCroppedCanvas({ width: 256, height: 256 });
               } else {
-                // Fallback: resize without crop
                 canvas = document.createElement("canvas");
                 canvas.width = 256;
                 canvas.height = 256;
@@ -657,6 +841,8 @@
         });
 
         // Auth providers + account linking
+        var userIdentities = [];
+
         async function loadAuthProviders(sess) {
           var container = document.getElementById("auth-provider-list");
           try {
@@ -744,10 +930,8 @@
           }
         }
 
-        var userIdentities = [];
-
-        // Password change form (email-auth users only; not applicable in local mode)
-        if (!isLocalMode) document.getElementById("password-form").addEventListener("submit", async function (event) {
+        // Password change form (email users only)
+        document.getElementById("password-form").addEventListener("submit", async function (event) {
           event.preventDefault();
           var data = new FormData(event.currentTarget);
           var password = String(data.get("newPassword") || "");
@@ -769,42 +953,9 @@
         });
 
         // ── Preferences tab ────────────────────────────────────────────────────
-        var currentTheme = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "auto";
-
-        function markThemeSelected(theme) {
-          document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
-            btn.setAttribute("aria-pressed", btn.dataset.themeChoice === theme ? "true" : "false");
-          });
-        }
-
-        markThemeSelected(currentTheme);
-
-        document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
-          btn.addEventListener("mouseenter", function () {
-            if (window.CardedTheme) window.CardedTheme.applyTheme(btn.dataset.themeChoice);
-          });
-          btn.addEventListener("mouseleave", function () {
-            if (window.CardedTheme) window.CardedTheme.applyTheme(currentTheme);
-          });
-          btn.addEventListener("click", function () {
-            currentTheme = btn.dataset.themeChoice;
-            if (window.CardedTheme) window.CardedTheme.setTheme(currentTheme);
-            markThemeSelected(currentTheme);
-          });
-        });
-
-        // Show walkthrough again
-        var wtBtn = document.getElementById("show-walkthrough-btn");
-        if (wtBtn) {
-          wtBtn.addEventListener("click", function () {
-            try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
-            window.location.assign(window.BASE_PATH + "/library");
-          });
-        }
+        wirePreferences();
 
         // ── Data tab ───────────────────────────────────────────────────────────
-        var statsLoaded = false;
-
         var activeChart = null;
         var currentRange = 30;
         var cachedSessions = [];
@@ -812,7 +963,6 @@
         async function loadStats(sess) {
           statsLoaded = true;
           try {
-            // Load from Dexie (local-first)
             var userId = sess.user.id;
             var userData = await window.CardedDB.getAllUserData(userId);
             var progress = userData.progress || [];
@@ -820,7 +970,6 @@
             var cards = userData.cards || [];
             var localStats = userData.stats || {};
 
-            // Aggregates from progress
             var mastered = progress.filter(function (p) { return (p.points || 0) === 0 && p.last_seen; }).length;
             var needsReview = progress.filter(function (p) { return (p.points || 0) > 0; }).length;
             var totalCorrect = progress.reduce(function (acc, p) { return acc + (p.correct_count || 0); }, 0);
@@ -828,7 +977,6 @@
             var totalAnswers = totalCorrect + totalWrong;
             var accuracy = totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : null;
 
-            // Supabase stats for streak/session count (authoritative)
             var remoteStats = null;
             try { remoteStats = await window.CardedSupabaseDB.getOrCreateStats(userId); } catch (_) {}
 
@@ -845,13 +993,11 @@
             document.getElementById("stats-needs-review").textContent = String(needsReview);
             document.getElementById("stats-sessions").textContent = String(totalSessions);
 
-            // Load sessions for chart
             var sessions = await window.CardedDB.getStudySessions(userId);
             cachedSessions = sessions;
             renderChart(currentRange);
             renderSetBreakdown(sets, cards, progress);
 
-            // Range buttons
             document.querySelectorAll("[data-range]").forEach(function (btn) {
               btn.addEventListener("click", function () {
                 document.querySelectorAll("[data-range]").forEach(function (b) { b.classList.remove("active"); });
@@ -878,7 +1024,6 @@
             return;
           }
 
-          // Filter sessions by range
           var now = Date.now();
           var cutoff = rangeDays > 0 ? now - rangeDays * 24 * 60 * 60 * 1000 : 0;
           var filtered = cachedSessions.filter(function (s) {
@@ -895,7 +1040,6 @@
           empty.style.display = "none";
           canvas.style.display = "";
 
-          // Build daily buckets
           var days = rangeDays > 0 ? rangeDays : 90;
           var labels = [];
           var cardsPerDay = [];
@@ -1018,145 +1162,8 @@
           container.innerHTML = html;
         }
 
-        function escHtml(str) {
-          return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        }
-
         // ── Import / Export ────────────────────────────────────────────────────
-        function parseCardLine(line) {
-          var trimmed = line.trim();
-          if (!trimmed) return null;
-          var sep = -1;
-          if (trimmed.includes(" | ")) sep = trimmed.indexOf(" | ");
-          else if (trimmed.includes("\t")) sep = trimmed.indexOf("\t");
-          else if (trimmed.includes(",")) sep = trimmed.indexOf(",");
-          if (sep < 0) return null;
-          var term = trimmed.slice(0, sep).trim();
-          var def = trimmed.slice(sep + (trimmed[sep] === " " ? 3 : 1)).trim();
-          return term && def ? { term: term, definition: def } : null;
-        }
-
-        async function importTxtFile(file) {
-          var text = await file.text();
-          var lines = text.split(/\r?\n/);
-          var cards = lines.map(parseCardLine).filter(Boolean);
-          if (!cards.length) { window.CardedComponents.showToast("No cards found in file."); return; }
-          var setName = file.name.replace(/\.txt$/i, "").trim().slice(0, 30);
-          // Create a new standalone set
-          var setId = crypto.randomUUID();
-          var setRow = { id: setId, user_id: sess.user.id, folder_id: null, name: setName, order: 0, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-          await window.CardedDB.put("sets", setRow);
-          for (var i = 0; i < cards.length; i++) {
-            var c = cards[i];
-            await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: sess.user.id, set_id: setId, term: c.term, definition: c.definition, order: i, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-          }
-          window.CardedComponents.showToast("Imported " + cards.length + " cards into "" + setName + """);
-        }
-
-        async function importZipFile(file) {
-          if (typeof window.JSZip === "undefined") { window.CardedComponents.showToast("Zip support unavailable. Try again when online."); return; }
-          var zip;
-          try { zip = await window.JSZip.loadAsync(file); } catch (_) { window.CardedComponents.showToast("Could not read zip file."); return; }
-          var txtFiles = Object.keys(zip.files).filter(function (n) { return !zip.files[n].dir && n.endsWith(".txt"); });
-          if (!txtFiles.length) { window.CardedComponents.showToast("No .txt files found in zip."); return; }
-          var imported = 0;
-          var setsCreated = 0;
-          for (var fi = 0; fi < txtFiles.length; fi++) {
-            var filePath = txtFiles[fi];
-            var parts = filePath.split("/");
-            var fileName = parts[parts.length - 1];
-            var setName = fileName.replace(/\.txt$/i, "").trim().slice(0, 30);
-            if (!setName) continue;
-            var text = await zip.files[filePath].async("string");
-            var lines = text.split(/\r?\n/);
-            var cards = lines.map(parseCardLine).filter(Boolean);
-            if (!cards.length) continue;
-            var setId = crypto.randomUUID();
-            await window.CardedDB.put("sets", { id: setId, user_id: sess.user.id, folder_id: null, name: setName, order: setsCreated, times_studied: 0, last_studied: null, best_score: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-            for (var ci = 0; ci < cards.length; ci++) {
-              var card = cards[ci];
-              await window.CardedDB.put("cards", { id: crypto.randomUUID(), user_id: sess.user.id, set_id: setId, term: card.term, definition: card.definition, order: ci, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-            }
-            imported += cards.length;
-            setsCreated += 1;
-          }
-          window.CardedComponents.showToast("Imported " + imported + " cards across " + setsCreated + " sets.");
-        }
-
-        var importInput = document.getElementById("import-file-input");
-        var importMode = "txt";
-
-        document.getElementById("import-txt-btn").addEventListener("click", function () {
-          importMode = "txt";
-          importInput.accept = ".txt,text/plain";
-          importInput.click();
-        });
-        document.getElementById("import-zip-btn").addEventListener("click", function () {
-          importMode = "zip";
-          importInput.accept = ".zip,application/zip";
-          importInput.click();
-        });
-        importInput.addEventListener("change", async function () {
-          var file = importInput.files[0];
-          if (!file) return;
-          importInput.value = "";
-          if (file.name.endsWith(".zip")) {
-            await importZipFile(file);
-          } else {
-            await importTxtFile(file);
-          }
-        });
-
-        document.getElementById("export-all-btn").addEventListener("click", async function () {
-          var btn = this;
-          window.CardedUtils.withLoading(btn, async function () {
-            var userId = sess.user.id;
-            var userData = await window.CardedDB.getAllUserData(userId);
-            var sets = userData.sets || [];
-            var cards = userData.cards || [];
-            var folders = userData.folders || [];
-
-            function setCards(setId) {
-              return cards.filter(function (c) { return c.set_id === setId; }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
-            }
-            function toTxt(setId) {
-              return setCards(setId).map(function (c) { return c.term + " | " + c.definition; }).join("\n");
-            }
-
-            if (typeof window.JSZip !== "undefined") {
-              var zip = new window.JSZip();
-              var date = new Date().toISOString().slice(0, 10);
-              folders.forEach(function (folder) {
-                var folderSets = sets.filter(function (s) { return s.folder_id === folder.id; });
-                var safeName = folder.name.replace(/[/\\?%*:|"<>]/g, "-");
-                folderSets.forEach(function (set) {
-                  var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
-                  zip.file(safeName + "/" + setSafe + ".txt", toTxt(set.id));
-                });
-              });
-              sets.filter(function (s) { return !s.folder_id; }).forEach(function (set) {
-                var setSafe = set.name.replace(/[/\\?%*:|"<>]/g, "-");
-                zip.file(setSafe + ".txt", toTxt(set.id));
-              });
-              var blob = await zip.generateAsync({ type: "blob" });
-              var url = URL.createObjectURL(blob);
-              var a = document.createElement("a");
-              a.href = url; a.download = "Carded_Export_" + date + ".zip";
-              document.body.appendChild(a); a.click(); a.remove();
-              URL.revokeObjectURL(url);
-              window.CardedComponents.showToast("All data exported");
-            } else {
-              var sections = sets.map(function (set) { return "# " + set.name + "\n" + toTxt(set.id); });
-              var blob2 = new Blob([sections.join("\n\n")], { type: "text/plain;charset=utf-8" });
-              var url2 = URL.createObjectURL(blob2);
-              var a2 = document.createElement("a");
-              a2.href = url2; a2.download = "carded-backup.txt";
-              document.body.appendChild(a2); a2.click(); a2.remove();
-              URL.revokeObjectURL(url2);
-              window.CardedComponents.showToast("Backup exported");
-            }
-          });
-        });
+        wireImportExport(session);
 
         // Sign out
         document.getElementById("signout-button").addEventListener("click", async function () {
@@ -1267,7 +1274,7 @@
         });
 
         // ── Init profile tab ───────────────────────────────────────────────────
-        if (!isLocalMode) await loadProfileTab(session);
+        await loadProfileTab(session);
       });
     </script>
   </body>

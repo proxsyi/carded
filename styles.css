@@ -575,7 +575,7 @@ select:focus-visible,
   min-height: 190px;
   padding: 20px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 .tile:hover {
@@ -693,7 +693,7 @@ select:focus-visible,
 
 .landing-grid .panel {
   cursor: default;
-  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease;
+  transition: transform 0.2s ease, box-shadow 0.35s ease, background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 .landing-grid .panel:hover {
@@ -1530,7 +1530,7 @@ select:focus-visible,
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--text-secondary);
-  transition: color 0.35s ease, border-color 0.35s ease;
+  transition: color 0.35s ease, border-color 0.35s ease, background-color 0.35s ease;
   margin-bottom: -1px;
   white-space: nowrap;
   border-radius: 0;
@@ -1623,7 +1623,7 @@ select:focus-visible,
   border: 2px solid var(--border);
   background: var(--bg-secondary);
   cursor: pointer;
-  transition: border-color 0.35s ease, background-color 0.35s ease;
+  transition: border-color 0.35s ease, background-color 0.35s ease, color 0.35s ease;
   text-align: center;
 }
 
@@ -1976,7 +1976,7 @@ kbd {
   box-shadow: var(--shadow-hover, 0 28px 70px rgba(0,0,0,0.36));
   padding: 20px;
   pointer-events: all;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.25s ease, background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
 }
 
 .wt-header {
