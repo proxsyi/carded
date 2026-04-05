@@ -61,6 +61,31 @@
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
     <script defer>
       document.addEventListener("DOMContentLoaded", async function () {
+        // If OAuth is redirecting back with tokens, wait for session to be established
+        // before running the auth guard (which calls getSession).
+        var hasTokens = window.location.hash.includes("access_token") ||
+                        window.location.search.includes("code=");
+        if (hasTokens) {
+          await new Promise(function (resolve) {
+            var done = false;
+            var timer = setTimeout(function () { done = true; resolve(); }, 5000);
+            window.supabaseClient.auth.onAuthStateChange(function (event, session) {
+              if (!done && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
+                done = true;
+                clearTimeout(timer);
+                resolve();
+              }
+            });
+            // Also try getSession — in some flows it processes the token immediately
+            window.supabaseClient.auth.getSession().then(function (r) {
+              if (!done && r.data && r.data.session) {
+                done = true;
+                clearTimeout(timer);
+                resolve();
+              }
+            }).catch(function () {});
+          });
+        }
         await window.CardedAuthGuard.guardPage({ requiresAuth: false });
         var hashParams = window.CardedAuthGuard.readHashParams();
         var searchParams = new URLSearchParams(window.location.search);

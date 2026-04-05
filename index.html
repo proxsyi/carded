@@ -128,7 +128,7 @@
         var hashStr = window.location.hash || "";
         var hParams = new URLSearchParams(hashStr.replace(/^#/, ""));
         if (hParams.get("type") === "recovery" && window.location.pathname === window.BASE_PATH) {
-          window.location.replace(window.location.origin + window.BASE_PATH + "/account" + window.location.hash);
+          window.location.replace(window.location.origin + window.BASE_PATH + "/account/" + window.location.hash);
           return;
         }
 
