@@ -39,7 +39,32 @@
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
-    <main class="auth-shell" id="main">
+    <!-- Skeleton loading state (visible before JS runs) -->
+    <div id="skeleton-loading" class="auth-shell">
+      <div class="auth-card account-card" style="padding:32px">
+        <style>
+          @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+          .skel { background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease infinite; border-radius: 8px; }
+        </style>
+        <div class="skel" style="height:28px;width:120px;margin-bottom:24px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:24px">
+          <div class="skel" style="height:36px;width:90px;border-radius:8px"></div>
+          <div class="skel" style="height:36px;width:110px;border-radius:8px"></div>
+          <div class="skel" style="height:36px;width:70px;border-radius:8px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+          <div class="skel" style="width:64px;height:64px;border-radius:50%;flex-shrink:0"></div>
+          <div style="flex:1">
+            <div class="skel" style="height:16px;width:60%;margin-bottom:10px"></div>
+            <div class="skel" style="height:14px;width:40%"></div>
+          </div>
+        </div>
+        <div class="skel" style="height:96px;border-radius:12px;margin-bottom:16px"></div>
+        <div class="skel" style="height:72px;border-radius:12px"></div>
+      </div>
+    </div>
+
+    <main class="auth-shell" id="main" style="display:none">
       <section class="auth-card account-card">
 
         <!-- ── Recovery mode (password reset via email link) ─────────────────── -->
@@ -143,6 +168,15 @@
               </div>
               <button class="button" type="submit" style="align-self:flex-start">Update password</button>
             </form>
+
+            <!-- Account actions (sign out / delete) — hidden in local mode -->
+            <div class="panel stack" id="account-actions-panel" style="border-top:1px solid var(--border);padding-top:20px;margin-top:8px">
+              <h2 style="margin:0 0 12px">Account</h2>
+              <div style="display:flex;flex-wrap:wrap;gap:12px">
+                <button id="signout-button" class="ghost-button" type="button">Sign out</button>
+                <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
+              </div>
+            </div>
 
           </div><!-- /tab-profile -->
 
@@ -267,15 +301,6 @@
               <h2 style="margin:0 0 4px">Export all data</h2>
               <p class="meta-copy" style="margin:0 0 12px">Download all your folders and sets as a .zip file.</p>
               <button id="export-all-btn" class="ghost-button" type="button">Export all as .zip</button>
-            </div>
-
-            <!-- Account actions -->
-            <div class="panel stack">
-              <h2 style="margin:0 0 12px">Account</h2>
-              <div style="display:flex;flex-wrap:wrap;gap:12px">
-                <button id="signout-button" class="ghost-button" type="button">Sign out</button>
-                <button id="delete-account-button" class="danger-button" type="button">Delete account</button>
-              </div>
             </div>
 
             <p class="meta-copy" style="text-align:center;margin-top:8px">v<span id="app-version">4.0.0</span></p>
@@ -508,9 +533,15 @@
         // ── LOCAL MODE: clean code path, returns early ─────────────────────────
         var isLocalMode = window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode();
 
+        function showSettings() {
+          document.getElementById("skeleton-loading").style.display = "none";
+          document.getElementById("main").style.display = "";
+        }
+
         if (isLocalMode) {
           var localSession = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
 
+          showSettings();
           document.getElementById("settings-view").classList.remove("hidden");
           document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
 
@@ -549,9 +580,9 @@
             leaveLocalMode("/carded/login");
           });
 
-          // Data tab: hide only the account actions panel (sign out / delete)
-          var signoutBtnEl = document.getElementById("signout-button");
-          if (signoutBtnEl && signoutBtnEl.closest(".panel")) signoutBtnEl.closest(".panel").style.display = "none";
+          // Profile tab: hide account actions panel in local mode
+          var accountActionsPanel = document.getElementById("account-actions-panel");
+          if (accountActionsPanel) accountActionsPanel.style.display = "none";
 
           // Tab system with lazy stats loading on data tab
           var localStatsLoaded = false;
@@ -663,6 +694,7 @@
         var session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
         if (!session) return;
 
+        showSettings();
         document.getElementById("settings-view").classList.remove("hidden");
         document.getElementById("app-version").textContent = window.APP_VERSION || "4.0.0";
 
