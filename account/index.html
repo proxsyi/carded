@@ -526,13 +526,27 @@
             '</div></div>',
           ].join("");
 
-          document.getElementById("local-create-account-btn").addEventListener("click", function () {
+          async function leaveLocalMode(destination) {
+            try {
+              if (window.CardedDB) {
+                var localData = await window.CardedDB.getAllUserData("local-user");
+                var hasData = (localData.folders || []).length > 0 ||
+                              (localData.sets || []).length > 0 ||
+                              (localData.cards || []).length > 0;
+                if (hasData) {
+                  localStorage.setItem("carded_had_local_data", "true");
+                }
+              }
+            } catch (_) {}
             localStorage.removeItem("carded_local_mode");
-            window.location.href = "/carded/signup";
+            window.location.href = destination;
+          }
+
+          document.getElementById("local-create-account-btn").addEventListener("click", function () {
+            leaveLocalMode("/carded/signup");
           });
           document.getElementById("local-signin-btn").addEventListener("click", function () {
-            localStorage.removeItem("carded_local_mode");
-            window.location.href = "/carded/login";
+            leaveLocalMode("/carded/login");
           });
 
           // Data tab: hide only the account actions panel (sign out / delete)

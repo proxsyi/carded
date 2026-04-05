@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Script order: config -> utils -> auth-guard -> auth -->
+    <!-- Script order: config -> utils -> auth -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carded — Study smarter. Remember more.</title>
@@ -25,7 +25,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
     <script src="/carded/config.js?v=4.0.0" defer></script>
     <script src="/carded/utils.js?v=4.0.0" defer></script>
-    <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
     <script src="/carded/auth.js?v=4.0.0" defer></script>
     <script src="/carded/shortcuts.js?v=4.0.0" defer></script>
   </head>
@@ -125,8 +124,26 @@
             return;
           }
         }
-        if (window.CardedAuthGuard.maybeHandleRecoveryRedirect()) return;
-        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+        // Handle email recovery link (type=recovery in URL hash)
+        var hashStr = window.location.hash || "";
+        var hParams = new URLSearchParams(hashStr.replace(/^#/, ""));
+        if (hParams.get("type") === "recovery" && window.location.pathname === window.BASE_PATH) {
+          window.location.replace(window.location.origin + window.BASE_PATH + "/account" + window.location.hash);
+          return;
+        }
+
+        // Get session for UI updates — homepage is always public, never redirect
+        var session = null;
+        if (window.supabaseClient) {
+          var sessionResp = await window.supabaseClient.auth.getSession().catch(function () {
+            return { data: { session: null } };
+          });
+          session = (sessionResp.data && sessionResp.data.session) || null;
+        }
+        // Also check local mode
+        if (!session && window.CardedUtils && window.CardedUtils.safeGet("carded_local_mode") === "true") {
+          session = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
+        }
 
         // Wire theme toggle in topbar
         var themeToggle = document.getElementById("landing-theme-toggle");
