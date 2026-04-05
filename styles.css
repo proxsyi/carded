@@ -557,7 +557,7 @@ select:focus-visible,
 }
 
 .breadcrumbs span[aria-hidden="true"] {
-  color: rgba(148, 148, 163, 0.5);
+  color: var(--text-tertiary);
 }
 
 .tile-grid {

@@ -67,6 +67,59 @@
       if (!session) return;
     }
 
+    // ── Local data merge: when a local-mode user has just signed in/up ──────
+    if (session && !session.local && window.CardedUtils.safeGet("carded_had_local_data") === "true") {
+      window.CardedUtils.safeRemove("carded_had_local_data");
+      if (window.CardedDB) {
+        const localBundle = await window.CardedDB.getAllUserData("local-user").catch(() => ({}));
+        const lFolders = localBundle.folders || [];
+        const lSets = localBundle.sets || [];
+        const lCards = localBundle.cards || [];
+        if (lFolders.length || lSets.length || lCards.length) {
+          const mergeChoice = await promptLocalDataMerge(lFolders, lSets, lCards);
+          const now = new Date().toISOString();
+          const uid = session.user.id;
+          if (mergeChoice === "upload") {
+            // Update user_id in Dexie (persists for offline use)
+            await window.CardedDB.bulkPut("folders", lFolders.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            await window.CardedDB.bulkPut("sets", lSets.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            await window.CardedDB.bulkPut("cards", lCards.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            const lProgress = localBundle.progress || [];
+            if (lProgress.length) {
+              await window.CardedDB.bulkPut("user_card_progress", lProgress.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            }
+            // Best-effort push to Supabase so data survives the next refetch
+            if (navigator.onLine && window.supabaseClient) {
+              try {
+                if (lFolders.length) {
+                  await window.supabaseClient.from("folders").upsert(
+                    lFolders.map((r) => ({ id: r.id, user_id: uid, name: r.name, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+                if (lSets.length) {
+                  await window.supabaseClient.from("sets").upsert(
+                    lSets.map((r) => ({ id: r.id, user_id: uid, folder_id: r.folder_id || null, name: r.name, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+                if (lCards.length) {
+                  await window.supabaseClient.from("cards").upsert(
+                    lCards.map((r) => ({ id: r.id, user_id: uid, set_id: r.set_id, term: r.term, definition: r.definition, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+              } catch (_) {
+                // Non-fatal: Dexie has the data; will sync on next mutation or reconnect
+              }
+            }
+          }
+          // Remove old local-user records
+          await window.CardedDB.deleteWhere("folders", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("sets", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("cards", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("user_card_progress", (r) => r.user_id === "local-user");
+        }
+      }
+    }
+
     if (!("indexedDB" in window) || !window.CardedDB || !window.CardedSync) {
       showStorageError();
       return;
@@ -158,6 +211,41 @@
 
   function showStorageError() {
     els.storageError.classList.remove("hidden");
+  }
+
+  function promptLocalDataMerge(lFolders, lSets, lCards) {
+    return new Promise(function (resolve) {
+      const parts = [];
+      if (lFolders.length) parts.push(lFolders.length + (lFolders.length === 1 ? " folder" : " folders"));
+      if (lSets.length) parts.push(lSets.length + (lSets.length === 1 ? " set" : " sets"));
+      if (lCards.length) parts.push(lCards.length + (lCards.length === 1 ? " card" : " cards"));
+
+      const backdrop = document.createElement("div");
+      backdrop.className = "modal-backdrop";
+      backdrop.setAttribute("role", "dialog");
+      backdrop.setAttribute("aria-modal", "true");
+      backdrop.setAttribute("aria-labelledby", "local-merge-title");
+      backdrop.innerHTML =
+        '<div class="modal">' +
+        '<h2 id="local-merge-title" style="margin:0 0 12px">Import your local data?</h2>' +
+        "<p>You have local data (" + parts.join(", ") + "). What would you like to do with it?</p>" +
+        '<div class="modal__actions">' +
+        '<button id="local-merge-upload" class="button" type="button">Upload to account</button>' +
+        '<button id="local-merge-fresh" class="ghost-button" type="button">Start fresh</button>' +
+        "</div>" +
+        "</div>";
+
+      els.modalRoot.appendChild(backdrop);
+
+      backdrop.querySelector("#local-merge-upload").addEventListener("click", function () {
+        backdrop.remove();
+        resolve("upload");
+      });
+      backdrop.querySelector("#local-merge-fresh").addEventListener("click", function () {
+        backdrop.remove();
+        resolve("fresh");
+      });
+    });
   }
 
   function enqueueWrite(work) {
