@@ -20,6 +20,7 @@
     sort: window.CardedUtils.safeGet(SORT_KEY) || "alphabetical",
     userId: null,
     userEmail: "",
+    providerAvatarUrl: "",
     online: true,
     isLoading: true,
     longLoad: false,
@@ -130,6 +131,7 @@
 
     state.userId = session.user.id;
     state.userEmail = session.user.email || "";
+    state.providerAvatarUrl = (session.user.user_metadata && session.user.user_metadata.avatar_url) || "";
     state.localMode = Boolean(session.local) || (window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode());
     if (
       !state.localMode &&
@@ -732,6 +734,12 @@
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     document.addEventListener("change", onDocumentChange);
+    // Refresh topbar avatar when another tab updates the profile picture
+    window.addEventListener("storage", function (event) {
+      if (event.key === "carded_pfp_preference" || event.key === "carded_pfp_updated") {
+        updateTopbarAvatar();
+      }
+    });
   }
 
   function handleRouteChange() {
@@ -847,6 +855,26 @@
     renderModal();
   }
 
+  async function updateTopbarAvatar() {
+    const avatarEl = els.headerActions && els.headerActions.querySelector(".account-link__avatar");
+    if (!avatarEl || state.localMode) return;
+    const pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+    if (pref === "provider" && state.providerAvatarUrl) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(state.providerAvatarUrl)}" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`;
+      return;
+    }
+    if (pref === "custom" && window.CardedDB) {
+      try {
+        const dataUrl = await window.CardedDB.kvGet("profile_pic_custom");
+        if (dataUrl) {
+          avatarEl.innerHTML = `<img src="${escapeHtml(dataUrl)}" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`;
+          return;
+        }
+      } catch (_) {}
+    }
+    // Fall back to initial letter — already rendered, nothing to do
+  }
+
   function renderHeaderActions() {
     const themeEff = window.CardedTheme ? window.CardedTheme.effectiveTheme(window.CardedTheme.getStoredTheme()) : "dark";
     const avatarInitial = state.localMode
@@ -861,6 +889,7 @@
         <span class="account-link__avatar${state.localMode ? " local-mode-avatar" : ""}" aria-hidden="true">${avatarInitial}</span>
       </a>
     `;
+    updateTopbarAvatar();
     // Wire theme toggle
     const toggleBtn = els.headerActions.querySelector("[data-theme-toggle]");
     if (toggleBtn && window.CardedTheme) {
