@@ -75,6 +75,15 @@
     }
   });
 
+  // Re-apply theme when restored from bfcache (back/forward navigation)
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) {
+      var theme = getStoredTheme();
+      applyTheme(theme);
+      updateToggleIcons(theme);
+    }
+  });
+
   // Listen for theme changes from other tabs via BroadcastChannel
   if (typeof BroadcastChannel !== "undefined") {
     try {

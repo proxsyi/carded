@@ -879,6 +879,7 @@
               }
             }
             window.CardedUtils.safeSet("carded_pfp_preference", pref);
+            window.CardedUtils.safeSet("carded_pfp_updated", String(Date.now()));
             setActivePfpBtn(pref);
             await applyPfpPreference(pref, session);
           });
@@ -959,6 +960,7 @@
               var dataUrl = canvas.toDataURL("image/jpeg", 0.85);
               await window.CardedDB.kvSet("profile_pic_custom", dataUrl);
               window.CardedUtils.safeSet("carded_pfp_preference", "custom");
+              window.CardedUtils.safeSet("carded_pfp_updated", String(Date.now()));
               setActivePfpBtn("custom");
               showProfilePicImg(dataUrl);
               closeCropModal();
