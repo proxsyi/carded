@@ -120,8 +120,13 @@
           }
           window.CardedUtils.withLoading(submitBtn, async function () {
             try {
-              await window.CardedAuth.signUpWithEmail(String(data.get("email") || "").trim(), password);
-              window.CardedAuthGuard.redirectAuthedHome();
+              const result = await window.CardedAuth.signUpWithEmail(String(data.get("email") || "").trim(), password);
+              if (result && result.session) {
+                window.CardedAuthGuard.redirectAuthedHome();
+              } else {
+                // Email confirmation required — session is null until user confirms
+                window.CardedAuth.showToast("Check your email to confirm your account, then sign in.");
+              }
             } catch (error) {
               window.CardedAuth.showToast(error.message || "Something went wrong. Please try again.");
             }
