@@ -37,7 +37,7 @@
     },
     {
       title: "Create folders and sets",
-      desc: "Organize your flashcards into folders, or create standalone sets. Use the buttons in the top-right to get started.",
+      desc: "Organize your flashcards into folders, or create standalone sets. Use the \u201cNew Folder\u201d or \u201cNew Set\u201d buttons in each section to get started.",
       targetSelector: "[data-action='create-folder']",
       targetPadding: 8,
     },
@@ -369,7 +369,7 @@
       '</div>' +
       '<div class="wt-actions">' +
       '  <button class="ghost-button wt-prev-btn" type="button" aria-label="Previous step">' +
-      '    &#x23EA; Back' +
+      '    Back' +
       '  </button>' +
       '  <button class="button wt-next-btn" type="button">Next</button>' +
       '</div>';
