@@ -12,7 +12,9 @@
     throw new Error("Supabase client library failed to load.");
   }
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { experimentalManualLinking: true },
+  });
 
   window.BASE_PATH = BASE_PATH;
   window.APP_VERSION = APP_VERSION;

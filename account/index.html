@@ -1021,10 +1021,12 @@
                 var provider = btn.dataset.linkProvider;
                 window.CardedUtils.withLoading(btn, async function () {
                   try {
-                    await window.supabaseClient.auth.linkIdentity({
+                    var { data, error } = await window.supabaseClient.auth.linkIdentity({
                       provider: provider,
                       options: { redirectTo: window.location.origin + window.BASE_PATH + "/account/" },
                     });
+                    if (error) throw error;
+                    if (data && data.url) window.location.href = data.url;
                   } catch (error) {
                     window.CardedComponents.showToast(error.message || "Failed to link account.");
                   }
