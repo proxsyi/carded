@@ -328,23 +328,58 @@
   }
 
   function renderLoadingState() {
+    const skeletonTile = `
+      <div class="tile skeleton-tile-wrap">
+        <div class="tile__header">
+          <div class="stack" style="flex:1;min-width:0">
+            <div class="skeleton" style="height:20px;width:62%;border-radius:6px"></div>
+            <div class="skeleton" style="height:13px;width:40%;border-radius:4px;margin-top:6px"></div>
+          </div>
+        </div>
+        <div class="tile__meta">
+          <div class="meta-item">
+            <div class="skeleton" style="height:12px;width:36%;border-radius:4px"></div>
+            <div class="skeleton" style="height:12px;width:26%;border-radius:4px"></div>
+          </div>
+          <div class="meta-item">
+            <div class="skeleton" style="height:12px;width:30%;border-radius:4px"></div>
+            <div class="skeleton" style="height:12px;width:22%;border-radius:4px"></div>
+          </div>
+        </div>
+        <div class="tile__footer">
+          <div></div>
+          <div class="tile__actions">
+            <div class="skeleton" style="height:28px;width:54px;border-radius:6px"></div>
+          </div>
+        </div>
+      </div>
+    `;
     els.app.innerHTML = `
       <section>
-        <div class="skeleton-section-header">
-          <div class="skeleton-section-header__text">
+        <div class="section-header">
+          <div class="stack">
             <div class="skeleton skeleton-title"></div>
             <div class="skeleton skeleton-copy"></div>
           </div>
-          <div class="skeleton-section-header__actions">
+          <div style="display:flex;gap:8px;align-items:flex-end">
             <div class="skeleton skeleton-btn skeleton-btn--ghost"></div>
             <div class="skeleton skeleton-btn skeleton-btn--primary"></div>
           </div>
         </div>
+        <div class="control-row">
+          <div class="control-group">
+            <div class="field">
+              <div class="skeleton" style="height:13px;width:44px;border-radius:4px"></div>
+              <div class="skeleton" style="height:38px;width:220px;border-radius:8px"></div>
+            </div>
+            <div class="field">
+              <div class="skeleton" style="height:13px;width:28px;border-radius:4px"></div>
+              <div class="skeleton" style="height:38px;width:130px;border-radius:8px"></div>
+            </div>
+          </div>
+        </div>
         <div class="tile-grid">
-          <div class="skeleton skeleton-tile"></div>
-          <div class="skeleton skeleton-tile"></div>
-          <div class="skeleton skeleton-tile"></div>
-          <div class="skeleton skeleton-tile"></div>
+          ${skeletonTile}${skeletonTile}${skeletonTile}${skeletonTile}
         </div>
         ${state.longLoad ? `<p class="section-copy" style="margin-top:20px">Taking longer than usual…</p>` : ""}
       </section>

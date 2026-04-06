@@ -1541,14 +1541,14 @@ select:focus-visible,
 }
 
 .skeleton-title {
-  width: min(220px, 60%);
-  height: 32px;
+  width: min(160px, 50%);
+  height: 30px;
 }
 
 .skeleton-copy {
-  width: min(340px, 80%);
-  height: 16px;
-  margin-top: 6px;
+  width: min(380px, 85%);
+  height: 14px;
+  margin-top: 8px;
 }
 
 .skeleton-btn {
@@ -1564,27 +1564,15 @@ select:focus-visible,
   width: 80px;
 }
 
-.skeleton-tile {
-  min-height: 140px;
-  border-radius: 16px;
+.tile.skeleton-tile-wrap {
+  cursor: default;
+  pointer-events: none;
 }
 
-.skeleton-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 20px;
-}
-
-.skeleton-section-header__text {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.skeleton-section-header__actions {
-  display: flex;
-  gap: 8px;
+.tile.skeleton-tile-wrap:hover {
+  transform: none;
+  box-shadow: var(--shadow);
+  background: var(--bg-secondary);
 }
 
 @keyframes skeleton-shimmer {
