@@ -1,4 +1,4 @@
-const CACHE_NAME = "carded-static-v13";
+const CACHE_NAME = "carded-static-v14";
 const APP_SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -71,12 +71,38 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Navigation requests (page loads): network-first so Safari always gets a fresh
+  // HTML response and never accidentally serves a cached redirect as a download.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Offline: try cached navigation URL, then the pre-cached index.html variant
+          const indexUrl = url.pathname.replace(/\/?$/, "/") + "index.html";
+          return caches.match(new Request(url.origin + indexUrl))
+            .then((r) => r || caches.match(event.request))
+            .then((r) => r || caches.match(self.registration.scope));
+        })
+    );
+    return;
+  }
+
+  // Sub-resources (JS, CSS, images): cache-first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const networkFetch = fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
           return response;
         })
         .catch(() => cachedResponse);
