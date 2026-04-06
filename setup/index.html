@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Welcome</title>
+    <meta name="description" content="Set up your Carded preferences.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
+    <script src="/carded/theme.js?v=4.0.0"></script>
+    <style>
+      .setup-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .setup-card {
+        width: min(560px, 100%);
+        padding: 40px 32px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: var(--bg-auth);
+        box-shadow: var(--shadow);
+      }
+      .theme-options {
+        margin: 24px 0;
+      }
+      @media (max-width: 428px) {
+        .theme-option {
+          flex-direction: row;
+          text-align: left;
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <main class="setup-shell" id="main">
+      <section class="setup-card">
+        <p class="eyebrow">Carded</p>
+        <h1>Welcome to Carded!</h1>
+        <p class="auth-copy">Let's get things set up. Pick your theme.</p>
+
+        <div class="theme-options" role="group" aria-label="Theme selection">
+          <button class="theme-option" data-theme-choice="dark" type="button" aria-pressed="false">
+            <span class="theme-option__icon">🌙</span>
+            <div>
+              <div class="theme-option__label">Dark</div>
+              <div class="theme-option__desc">Purple on dark</div>
+            </div>
+          </button>
+          <button class="theme-option" data-theme-choice="light" type="button" aria-pressed="false">
+            <span class="theme-option__icon">☀️</span>
+            <div>
+              <div class="theme-option__label">Light</div>
+              <div class="theme-option__desc">Orange on cream</div>
+            </div>
+          </button>
+          <button class="theme-option" data-theme-choice="auto" type="button" aria-pressed="false">
+            <span class="theme-option__icon">🔄</span>
+            <div>
+              <div class="theme-option__label">Auto</div>
+              <div class="theme-option__desc">Match system</div>
+            </div>
+          </button>
+        </div>
+
+        <button id="continue-btn" class="button auth-button" type="button" style="margin-top:8px">Continue</button>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <script defer>
+      document.addEventListener("DOMContentLoaded", function () {
+        var ONBOARDING_KEY = "carded_onboarding_complete";
+        var currentTheme = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "auto";
+
+        function markSelected(theme) {
+          document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+            btn.setAttribute("aria-pressed", btn.dataset.themeChoice === theme ? "true" : "false");
+          });
+        }
+
+        markSelected(currentTheme);
+
+        document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
+          btn.addEventListener("mouseenter", function () {
+            if (window.CardedTheme) window.CardedTheme.applyTheme(btn.dataset.themeChoice);
+          });
+          btn.addEventListener("mouseleave", function () {
+            if (window.CardedTheme) window.CardedTheme.applyTheme(currentTheme);
+          });
+          btn.addEventListener("click", function () {
+            currentTheme = btn.dataset.themeChoice;
+            if (window.CardedTheme) window.CardedTheme.setTheme(currentTheme);
+            markSelected(currentTheme);
+          });
+        });
+
+        document.getElementById("continue-btn").addEventListener("click", function () {
+          try { localStorage.setItem(ONBOARDING_KEY, "true"); } catch (_) {}
+          // Queue walkthrough on library page if first time
+          var walkthroughDone = false;
+          try { walkthroughDone = localStorage.getItem("carded_walkthrough_complete") === "true"; } catch (_) {}
+          if (!walkthroughDone) {
+            try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+          }
+          window.location.assign("/carded/library");
+        });
+      });
+    </script>
+  </body>
+</html>

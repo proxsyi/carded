@@ -15,6 +15,46 @@
     user_stats: "id, user_id",
   });
 
+  // v2: no schema changes — upgrade hook reserved for future field additions.
+  // Follow this pattern for all future changes: increment version, declare full
+  // stores schema (must match or be superset of previous), add .upgrade() if
+  // existing records need backfilling.
+  db.version(2).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+  }).upgrade(function (tx) {
+    // No-op for v2: reserved for future backfills.
+    return Promise.resolve();
+  });
+
+  // v3: add local_kv for device-local key-value storage (e.g. custom profile pictures).
+  db.version(3).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+    local_kv: "key",
+  }).upgrade(function (tx) {
+    return Promise.resolve();
+  });
+
+  // v4: add study_sessions table for activity tracking and stats.
+  db.version(4).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+    local_kv: "key",
+    study_sessions: "id, user_id, set_id, started_at",
+  }).upgrade(function (tx) {
+    return Promise.resolve();
+  });
+
   async function clearAllTables() {
     await db.transaction("rw", db.tables, async function () {
       await Promise.all(db.tables.map(function (table) {
@@ -73,13 +113,25 @@
   }
 
   async function put(tableName, record) {
-    await db.table(tableName).put(record);
+    try {
+      await db.table(tableName).put(record);
+    } catch (err) {
+      if (err && err.name === "QuotaExceededError") throw err;
+      if (err && err.inner && err.inner.name === "QuotaExceededError") throw err.inner;
+      throw err;
+    }
     return record;
   }
 
   async function bulkPut(tableName, records) {
     if (!records.length) return [];
-    await db.table(tableName).bulkPut(records);
+    try {
+      await db.table(tableName).bulkPut(records);
+    } catch (err) {
+      if (err && err.name === "QuotaExceededError") throw err;
+      if (err && err.inner && err.inner.name === "QuotaExceededError") throw err.inner;
+      throw err;
+    }
     return records;
   }
 
@@ -106,6 +158,23 @@
     return db.table(tableName).toArray();
   }
 
+  async function getStudySessions(userId) {
+    return db.study_sessions.where("user_id").equals(userId).toArray();
+  }
+
+  async function kvGet(key) {
+    const row = await db.local_kv.get(key);
+    return row ? row.value : null;
+  }
+
+  async function kvSet(key, value) {
+    await db.local_kv.put({ key, value });
+  }
+
+  async function kvDelete(key) {
+    await db.local_kv.delete(key);
+  }
+
   window.CardedDB = {
     bulkPut,
     clearAllTables,
@@ -115,6 +184,10 @@
     getAll,
     getAllUserData,
     getById,
+    getStudySessions,
+    kvDelete,
+    kvGet,
+    kvSet,
     put,
     replaceAllData,
   };

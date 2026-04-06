@@ -7,7 +7,7 @@
   const MIGRATION_DONE_KEY = "carded_v1_migration_done";
   const MIGRATION_SKIPPED_KEY = "carded_v1_migration_skipped";
   const STUDY_SESSION_KEY = "carded_study_session";
-  const MAX_NAME_LENGTH = 40;
+  const MAX_NAME_LENGTH = 30;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   const state = {
@@ -20,6 +20,7 @@
     sort: window.CardedUtils.safeGet(SORT_KEY) || "alphabetical",
     userId: null,
     userEmail: "",
+    providerAvatarUrl: "",
     online: true,
     isLoading: true,
     longLoad: false,
@@ -30,7 +31,7 @@
     keyboardMove: null,
     modal: null,
     toastTimer: null,
-    learnSession: null,
+    quizSession: null,
     studySession: null,
   };
 
@@ -44,6 +45,7 @@
   };
   let writeQueue = Promise.resolve();
   let modalTriggerEl = null;
+  let modalCloseTimer = null;
   let dirtyEditor = false;
 
   document.addEventListener("DOMContentLoaded", init);
@@ -66,6 +68,62 @@
       if (!session) return;
     }
 
+    // ── Local data merge: when a local-mode user has just signed in/up ──────
+    if (session && !session.local && window.CardedUtils.safeGet("carded_had_local_data") === "true") {
+      window.CardedUtils.safeRemove("carded_had_local_data");
+      if (window.CardedDB) {
+        const localBundle = await window.CardedDB.getAllUserData("local-user").catch(() => ({}));
+        const lFolders = localBundle.folders || [];
+        const lSets = localBundle.sets || [];
+        const lCards = localBundle.cards || [];
+        if (lFolders.length || lSets.length || lCards.length) {
+          const mergeChoice = await promptLocalDataMerge(lFolders, lSets, lCards);
+          const now = new Date().toISOString();
+          const uid = session.user.id;
+          if (mergeChoice === "upload") {
+            // Update user_id in Dexie (persists for offline use)
+            await window.CardedDB.bulkPut("folders", lFolders.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            await window.CardedDB.bulkPut("sets", lSets.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            await window.CardedDB.bulkPut("cards", lCards.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            const lProgress = localBundle.progress || [];
+            if (lProgress.length) {
+              await window.CardedDB.bulkPut("user_card_progress", lProgress.map((r) => ({ ...r, user_id: uid, updated_at: now })));
+            }
+            // Best-effort push to Supabase so data survives the next refetch
+            if (navigator.onLine && window.supabaseClient) {
+              try {
+                if (lFolders.length) {
+                  await window.supabaseClient.from("folders").upsert(
+                    lFolders.map((r) => ({ id: r.id, user_id: uid, name: r.name, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+                if (lSets.length) {
+                  await window.supabaseClient.from("sets").upsert(
+                    lSets.map((r) => ({ id: r.id, user_id: uid, folder_id: r.folder_id || null, name: r.name, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+                if (lCards.length) {
+                  await window.supabaseClient.from("cards").upsert(
+                    lCards.map((r) => ({ id: r.id, user_id: uid, set_id: r.set_id, term: r.term, definition: r.definition, order: r.order, created_at: r.created_at, updated_at: now }))
+                  );
+                }
+              } catch (_) {
+                // Non-fatal: Dexie has the data; will sync on next mutation or reconnect
+              }
+            }
+          }
+          // Remove old local-user records
+          await window.CardedDB.deleteWhere("folders", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("sets", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("cards", (r) => r.user_id === "local-user");
+          await window.CardedDB.deleteWhere("user_card_progress", (r) => r.user_id === "local-user");
+          // Always queue walkthrough after first account creation + data transfer
+          try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+          try { localStorage.removeItem("carded_walkthrough_complete"); } catch (_) {}
+        }
+      }
+    }
+
     if (!("indexedDB" in window) || !window.CardedDB || !window.CardedSync) {
       showStorageError();
       return;
@@ -73,7 +131,10 @@
 
     state.userId = session.user.id;
     state.userEmail = session.user.email || "";
+    state.providerAvatarUrl = (session.user.user_metadata && session.user.user_metadata.avatar_url) || "";
+    state.localMode = Boolean(session.local) || (window.CardedAuthGuard && window.CardedAuthGuard.isLocalMode());
     if (
+      !state.localMode &&
       window.location.pathname === window.BASE_PATH + "/library" &&
       (window.location.search.includes("code=") || window.location.hash.includes("access_token="))
     ) {
@@ -97,8 +158,15 @@
     }
 
     try {
-      const bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
-      state.online = window.CardedSync.isOnline();
+      let bundle;
+      if (state.localMode) {
+        // Local mode: skip Supabase sync entirely
+        state.online = false;
+        bundle = await window.CardedDB.getAllUserData(state.userId);
+      } else {
+        bundle = await window.CardedSync.initSync(state.userId, state.userEmail);
+        state.online = window.CardedSync.isOnline();
+      }
       await loadAll(bundle);
       await cleanOrphanedLocalData();
     } catch (error) {
@@ -144,10 +212,50 @@
     handleRouteChange();
     maybePromptLegacyMigration();
     document.body.classList.add("ready");
+    // Trigger walkthrough if pending (catches the merge-flow case where the flag
+    // was set after the initial maybeAutoStart() already ran at page load)
+    if (window.CardedWalkthrough) {
+      setTimeout(function () { window.CardedWalkthrough.maybeAutoStart(); }, 800);
+    }
   }
 
   function showStorageError() {
     els.storageError.classList.remove("hidden");
+  }
+
+  function promptLocalDataMerge(lFolders, lSets, lCards) {
+    return new Promise(function (resolve) {
+      const parts = [];
+      if (lFolders.length) parts.push(lFolders.length + (lFolders.length === 1 ? " folder" : " folders"));
+      if (lSets.length) parts.push(lSets.length + (lSets.length === 1 ? " set" : " sets"));
+      if (lCards.length) parts.push(lCards.length + (lCards.length === 1 ? " card" : " cards"));
+
+      const backdrop = document.createElement("div");
+      backdrop.className = "modal-backdrop";
+      backdrop.setAttribute("role", "dialog");
+      backdrop.setAttribute("aria-modal", "true");
+      backdrop.setAttribute("aria-labelledby", "local-merge-title");
+      backdrop.innerHTML =
+        '<div class="modal">' +
+        '<h2 id="local-merge-title" style="margin:0 0 12px">Import your local data?</h2>' +
+        "<p>You have local data (" + parts.join(", ") + "). What would you like to do with it?</p>" +
+        '<div class="modal__actions">' +
+        '<button id="local-merge-upload" class="button" type="button">Upload to account</button>' +
+        '<button id="local-merge-fresh" class="ghost-button" type="button">Start fresh</button>' +
+        "</div>" +
+        "</div>";
+
+      els.modalRoot.appendChild(backdrop);
+
+      backdrop.querySelector("#local-merge-upload").addEventListener("click", function () {
+        backdrop.remove();
+        resolve("upload");
+      });
+      backdrop.querySelector("#local-merge-fresh").addEventListener("click", function () {
+        backdrop.remove();
+        resolve("fresh");
+      });
+    });
   }
 
   function enqueueWrite(work) {
@@ -275,6 +383,7 @@
       incorrectCount: progress ? (progress.incorrect_count || 0) : 0,
       lastSeen: progress ? toMillis(progress.last_seen) : null,
       box: Math.max(1, Math.min(3, (progress && progress.repetitions ? progress.repetitions : 0) + 1)),
+      points: progress ? Math.max(0, Math.min(10, progress.points || 0)) : 0,
     };
   }
 
@@ -372,6 +481,7 @@
       incorrect_count: card.incorrectCount || 0,
       last_seen: toIso(card.lastSeen),
       updated_at: nowIso(),
+      points: Math.max(0, Math.min(10, card.points || 0)),
     };
   }
 
@@ -391,11 +501,22 @@
 
   async function persistEntity(table, operation, row) {
     return enqueueWrite(async function () {
-      if (operation === "delete") {
-        await window.CardedDB.deleteById(table, row.id);
-      } else {
-        await window.CardedDB.put(table, row);
+      try {
+        if (operation === "delete") {
+          await window.CardedDB.deleteById(table, row.id);
+        } else {
+          await window.CardedDB.put(table, row);
+        }
+      } catch (dbError) {
+        if (dbError && (dbError.name === "QuotaExceededError" || (dbError.inner && dbError.inner.name === "QuotaExceededError"))) {
+          showToast("Storage is full — try deleting unused sets or clearing browser data.");
+          return;
+        }
+        throw dbError;
       }
+
+      // Skip remote sync in local mode
+      if (state.localMode) return { queued: false };
 
       const result = await window.CardedSync.syncMutation(table, operation, row);
       state.online = window.CardedSync.isOnline();
@@ -613,6 +734,20 @@
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     document.addEventListener("change", onDocumentChange);
+    // Refresh topbar avatar when another tab updates the profile picture
+    window.addEventListener("storage", function (event) {
+      if (event.key === "carded_pfp_preference" || event.key === "carded_pfp_updated") {
+        updateTopbarAvatar();
+      }
+    });
+    // Refresh avatar on bfcache restore (back/forward navigation)
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) updateTopbarAvatar();
+    });
+    // Refresh avatar when tab regains visibility (same-tab or multi-tab)
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") updateTopbarAvatar();
+    });
   }
 
   function handleRouteChange() {
@@ -622,19 +757,22 @@
     const setId = params.get("set");
     const mode = params.get("mode");
 
+    const dir = params.get("dir") || "term-definition";
+    const reviewOnly = params.get("review") === "1";
+
     if (path === window.BASE_PATH + "/study" && setId) {
-      if (mode === "learn") {
-        state.route = { view: "learn", setId: setId };
-        initLearnSession(setId);
+      if (mode === "quiz") {
+        state.route = { view: "quiz", setId: setId, quizDir: dir, reviewOnly: reviewOnly };
+        initQuizSession(setId, { direction: dir, reviewOnly: reviewOnly });
       } else {
-        state.route = { view: "study", setId: setId };
+        // flip mode (default, also handles legacy "study" mode)
+        state.route = { view: "flip", setId: setId, reviewOnly: reviewOnly };
         const savedSession = loadSavedStudySession(setId);
-        if (savedSession && savedSession.currentIndex > 0) {
-          // Auto-resume — initStudySession handles it
+        if (savedSession && savedSession.currentIndex > 0 && savedSession.mode === "flip" && savedSession.reviewOnly === reviewOnly) {
           initStudySession(setId, savedSession.shuffle, savedSession);
           state.studySession.resumed = true;
         } else {
-          initStudySession(setId);
+          initStudySession(setId, false, null, reviewOnly);
         }
       }
     } else if (path === window.BASE_PATH + "/library" && setId) {
@@ -655,11 +793,16 @@
     return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", params);
   }
 
-  function buildStudyHref(setId, mode) {
-    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", {
-      set: setId,
-      mode: mode === "learn" ? "learn" : "study",
-    });
+  function buildStudyHref(setId, options) {
+    const params = { set: setId };
+    if (options && options.mode === "quiz") {
+      params.mode = "quiz";
+      if (options.dir) params.dir = options.dir;
+    } else {
+      params.mode = "flip";
+    }
+    if (options && options.reviewOnly) params.review = "1";
+    return window.CardedUtils.buildAppUrl(window.BASE_PATH + "/study", params);
   }
 
   function navigateToLibrary(options, replace) {
@@ -672,8 +815,8 @@
     window.location.assign(href);
   }
 
-  function navigateToStudy(setId, mode) {
-    window.location.assign(buildStudyHref(setId, mode));
+  function navigateToStudy(setId, options) {
+    window.location.assign(buildStudyHref(setId, options));
   }
 
   function render() {
@@ -707,11 +850,11 @@
       case "set":
         renderSetView(state.route.setId);
         break;
-      case "study":
-        renderStudyView(state.route.setId);
+      case "flip":
+        renderFlipView(state.route.setId);
         break;
-      case "learn":
-        renderLearnView(state.route.setId);
+      case "quiz":
+        renderQuizView(state.route.setId);
         break;
       default:
         renderHomeView();
@@ -720,14 +863,49 @@
     renderModal();
   }
 
+  async function updateTopbarAvatar() {
+    const avatarEl = els.headerActions && els.headerActions.querySelector(".account-link__avatar");
+    if (!avatarEl || state.localMode) return;
+    const pref = window.CardedUtils.safeGet("carded_pfp_preference") || "initial";
+    if (pref === "provider" && state.providerAvatarUrl) {
+      avatarEl.innerHTML = `<img src="${escapeHtml(state.providerAvatarUrl)}" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`;
+      return;
+    }
+    if (pref === "custom" && window.CardedDB) {
+      try {
+        const dataUrl = await window.CardedDB.kvGet("profile_pic_custom");
+        if (dataUrl) {
+          avatarEl.innerHTML = `<img src="${escapeHtml(dataUrl)}" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">`;
+          return;
+        }
+      } catch (_) {}
+    }
+    // Fall back to initial letter — already rendered, nothing to do
+  }
+
   function renderHeaderActions() {
+    const themeEff = window.CardedTheme ? window.CardedTheme.effectiveTheme(window.CardedTheme.getStoredTheme()) : "dark";
+    const avatarInitial = state.localMode
+      ? "L"
+      : escapeHtml((window.CardedUtils.safeGet("carded_display_name") || state.userEmail || "U").slice(0, 1).toUpperCase());
     els.headerActions.innerHTML = `
-      <button class="ghost-button" data-action="create-folder">New folder</button>
-      <button class="button" data-action="create-set">New set</button>
-      <a class="account-link" href="${window.BASE_PATH}/account" aria-label="Open account">
-        <span class="account-link__avatar" aria-hidden="true">${escapeHtml((state.userEmail || "U").slice(0, 1).toUpperCase())}</span>
+      <button class="icon-button" data-theme-toggle aria-label="${themeEff === "dark" ? "Switch to light theme" : "Switch to dark theme"}">
+        <span class="theme-icon-moon" aria-hidden="true" ${themeEff !== "dark" ? 'style="display:none"' : ""}>🌙</span>
+        <span class="theme-icon-sun" aria-hidden="true" ${themeEff === "dark" ? 'style="display:none"' : ""}>☀️</span>
+      </button>
+      <a class="account-link" href="${window.BASE_PATH}/account/" aria-label="${state.localMode ? "Settings (local mode)" : "Open account"}">
+        <span class="account-link__avatar${state.localMode ? " local-mode-avatar" : ""}" aria-hidden="true">${avatarInitial}</span>
       </a>
     `;
+    updateTopbarAvatar();
+    // Wire theme toggle
+    const toggleBtn = els.headerActions.querySelector("[data-theme-toggle]");
+    if (toggleBtn && window.CardedTheme) {
+      toggleBtn.addEventListener("click", function () {
+        window.CardedTheme.cycleTheme();
+        renderHeaderActions();
+      });
+    }
   }
 
   function renderHomeView() {
@@ -758,6 +936,10 @@
             <h1 class="section-title">Your library</h1>
             <p class="section-copy">Folders for courses, standalone sets for everything else.</p>
           </div>
+          <div class="control-row">
+            <button class="ghost-button" data-action="create-folder">New folder</button>
+            <button class="button" data-action="create-set">New set</button>
+          </div>
         </div>
         ${renderLibraryControls()}
         ${renderStandaloneDropzone()}
@@ -766,10 +948,7 @@
             ${folders.map(renderFolderTile).join("")}
             ${standaloneSets.map((item) => renderSetTile(item, null)).join("")}
           </div>
-        ` : renderEmptyState("No sets yet — create your first one", [
-          { action: "create-set", label: "Create set", primary: true },
-          { action: "create-folder", label: "Create folder" }
-        ])}
+        ` : renderEmptyState("No sets yet — create your first one", [])}
       </section>
     `));
 
@@ -831,7 +1010,6 @@
     const folder = set.folderId ? getFolder(set.folderId) : null;
     const cards = getCardsForSet(set.id);
     const stats = getSetStats(set.id);
-    const canLearn = cards.length >= 2;
 
     els.app.appendChild(createElement(`
       <section class="set-layout">
@@ -860,8 +1038,7 @@
           </div>
           <div class="set-toolbar">
             <button class="ghost-button" data-action="export-set" data-set-id="${set.id}">Export .txt</button>
-            <button class="ghost-button" data-action="start-study" data-set-id="${set.id}" ${cards.length ? "" : "disabled"}>Study mode</button>
-            <button class="button" data-action="start-learn" data-set-id="${set.id}" ${canLearn ? "" : "disabled"}>Learn mode</button>
+            <button class="button" data-action="show-study-modal" data-set-id="${set.id}" ${cards.length ? "" : "disabled"}>Study</button>
             <button class="danger-button" data-action="delete-set" data-set-id="${set.id}">Delete set</button>
           </div>
         </div>
@@ -888,16 +1065,16 @@
         <section class="import-panel stack">
           <div>
             <h2>Import cards</h2>
-            <p class="section-copy">Paste Term, Definition lines or upload a UTF-8 .txt file.</p>
+            <p class="section-copy">Paste cards (one per line) or upload a .txt file. Supported formats: <code>Term | Definition</code>, <code>Term, Definition</code>, or tab-separated.</p>
           </div>
           <form class="stack" data-form="bulk-import" data-set-id="${set.id}">
             <div class="field">
               <label for="bulk-import-input">Paste cards</label>
-              <textarea id="bulk-import-input" class="textarea" name="bulkText" placeholder="Term, Definition"></textarea>
+              <textarea id="bulk-import-input" class="textarea" name="bulkText" placeholder="Term | Definition"></textarea>
             </div>
             <div class="import-panel__actions">
               <button class="ghost-button" type="button" data-action="trigger-file-upload" data-set-id="${set.id}">Choose .txt file</button>
-              <input class="visually-hidden" type="file" accept=".txt,text/plain" data-upload-input="${set.id}">
+              <input class="visually-hidden" type="file" accept=".txt,.zip,text/plain,application/zip" data-upload-input="${set.id}">
               <button class="button" type="submit">Import</button>
             </div>
           </form>
@@ -942,10 +1119,9 @@
     `));
   }
 
-  function renderStudyView(setId) {
+  function renderFlipView(setId) {
     const set = getSet(setId);
     if (!set) {
-      // Set not found — show a message instead of silently redirecting
       els.app.appendChild(createElement(`
         <section class="empty-state">
           <p>Set not found.</p>
@@ -959,12 +1135,14 @@
 
     const session = state.studySession;
     if (!session) {
-      // No cards in set
       els.app.appendChild(createElement(`
         <section class="empty-state">
-          <p>No cards to study yet!</p>
+          <p>${state.route.reviewOnly ? "No cards need review — you've got them all!" : "No cards to study yet!"}</p>
           <div class="empty-state__actions">
-            <a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>
+            ${state.route.reviewOnly
+              ? `<button class="button" data-action="show-study-modal" data-set-id="${setId}">Try a full session</button>`
+              : `<a class="button" href="${window.CardedUtils.buildAppUrl(window.BASE_PATH + "/library", { set: setId })}">Add cards to this set</a>`
+            }
           </div>
         </section>
       `));
@@ -972,12 +1150,11 @@
     }
 
     if (session.resumed) {
-      // Show a brief "resumed" indicator (clear after one render)
       delete session.resumed;
     }
 
     if (session.complete) {
-      els.app.appendChild(createElement(renderStudyComplete(set, session)));
+      els.app.appendChild(createElement(renderSessionComplete(set, session, "flip")));
       return;
     }
 
@@ -991,24 +1168,23 @@
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Study" }
+          { label: state.route.reviewOnly ? "Review" : "Flip" }
         ])}
         <div class="session-toolbar">
           <div class="control-row">
-            <button class="pill-button ${session.shuffle ? "active" : ""}" data-action="toggle-study-shuffle">Shuffle remaining</button>
+            <button class="pill-button ${session.shuffle ? "active" : ""}" data-action="toggle-study-shuffle">Shuffle</button>
             <button class="pill-button" data-action="toggle-study-direction">
-              ${session.direction === "term-definition" ? "Term → Definition" : "Definition → Term"}
+              ${session.direction === "term-definition" ? "Term → Def" : "Def → Term"}
             </button>
           </div>
           <div class="meta-inline">
-            <span>${session.index + 1}/${session.deck.length}</span>
-            <span>${session.isFlipped ? "Answer shown" : "Prompt side"}</span>
+            <span>${session.index + 1} / ${session.deck.length}</span>
           </div>
         </div>
         <div class="progress" aria-hidden="true">
-          <div class="progress__bar" style="width:${((session.index + 1) / session.deck.length) * 100}%"></div>
+          <div class="progress__bar" style="width:${((session.index) / session.deck.length) * 100}%"></div>
         </div>
-        <div class="session-card ${session.flashClass || ""}" role="region" aria-live="polite">
+        <div class="session-card" role="region" aria-live="polite">
           <button class="flip-card ${session.isFlipped ? "is-flipped" : ""}" data-action="flip-study-card" aria-label="Flip card">
             <span class="flip-face front">
               <span class="flip-label">${termFirst ? "Term" : "Definition"}</span>
@@ -1020,135 +1196,146 @@
             </span>
           </button>
         </div>
-        <div class="session-toolbar">
-          <button class="ghost-button" data-action="study-prev" ${session.index === 0 ? "disabled" : ""}>Previous</button>
-          <button class="button" data-action="study-next">${session.index + 1 === session.deck.length ? "Finish deck" : "Next"}</button>
-        </div>
+        ${session.isFlipped ? `
+          <div class="flip-verdict-row">
+            <button class="verdict-btn verdict-missed" data-action="flip-missed">
+              <span aria-hidden="true">✗</span> Missed it
+            </button>
+            <button class="verdict-btn verdict-got" data-action="flip-got-it">
+              <span aria-hidden="true">✓</span> Got it
+            </button>
+          </div>
+        ` : `
+          <div class="flip-hint">Tap the card to reveal the answer</div>
+        `}
       </section>
     `));
   }
 
-  function renderLearnView(setId) {
+  function renderQuizView(setId) {
     const set = getSet(setId);
-    const session = state.learnSession;
-    if (!set || !session) {
-      navigateToLibrary({ setId: setId }, true);
+    if (!set) {
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>Set not found.</p>
+          <div class="empty-state__actions">
+            <a class="button" href="${window.BASE_PATH}/library">Back to library</a>
+          </div>
+        </section>
+      `));
+      return;
+    }
+
+    const session = state.quizSession;
+    if (!session) {
+      els.app.appendChild(createElement(`
+        <section class="empty-state">
+          <p>${state.route.reviewOnly ? "No cards need review — you've got them all!" : "Not enough cards for quiz mode (need at least 4)."}</p>
+          <div class="empty-state__actions">
+            <button class="button" data-action="show-study-modal" data-set-id="${setId}">Choose another mode</button>
+          </div>
+        </section>
+      `));
       return;
     }
 
     if (session.complete) {
-      els.app.appendChild(createElement(renderLearnSummary(set, session)));
+      els.app.appendChild(createElement(renderSessionComplete(set, session, "quiz")));
       return;
     }
 
-    const question = session.currentQuestion;
+    const q = session.currentQuestion;
     els.app.appendChild(createElement(`
-      <section class="learn-shell">
+      <section class="session-shell">
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Learn" }
+          { label: state.route.reviewOnly ? "Review Quiz" : "Quiz" }
         ])}
         <div class="session-toolbar">
           <div class="meta-inline">
-            <span>${session.answered + 1}/${session.goal}</span>
-            <span>Score ${session.correctAnswers}/${Math.max(1, session.answered)}</span>
+            <span>${session.index + 1} / ${session.deck.length}</span>
+            <span>${q.direction === "term-definition" ? "Term → Def" : "Def → Term"}</span>
           </div>
-          <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
+          <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Exit</button>
         </div>
         <div class="progress" aria-hidden="true">
-          <div class="progress__bar" style="width:${(session.answered / session.goal) * 100}%"></div>
+          <div class="progress__bar" style="width:${(session.index / session.deck.length) * 100}%"></div>
         </div>
         <div class="session-card ${session.feedbackClass || ""}" role="region" aria-live="polite">
           <div class="flip-face">
-            <span class="session-caption">${question.direction === "term-definition" ? "Pick the definition" : "Pick the term"}</span>
-            <h2>${escapeHtml(question.prompt)}</h2>
+            <span class="flip-label">${q.direction === "term-definition" ? "Term" : "Definition"}</span>
+            <p class="flip-content ${q.direction === "term-definition" ? "term" : ""}">${escapeHtml(q.prompt)}</p>
           </div>
         </div>
-        <div class="choices">
-          ${question.choices.map((choice) => `
+        <div class="quiz-grid">
+          ${q.choices.map((choice, i) => `
             <button
-              class="ghost-button choice-button ${getChoiceClass(session, choice)}"
-              data-action="answer-choice"
-              data-card-id="${question.card.id}"
+              class="quiz-choice ${getQuizChoiceClass(session, choice)}"
+              data-action="answer-quiz"
+              data-card-id="${q.card.id}"
               data-choice-id="${choice.id}"
               ${session.pendingNext ? "disabled" : ""}
-            >${escapeHtml(choice.label)}</button>
+            >
+              <span class="quiz-choice__num">${i + 1}</span>
+              <span class="quiz-choice__label">${escapeHtml(choice.label)}</span>
+            </button>
           `).join("")}
         </div>
-        <div class="feedback">${renderLearnFeedback(session)}</div>
       </section>
     `));
   }
 
-  function renderStudyComplete(set, session) {
+  function renderSessionComplete(set, session, mode) {
+    const correct = session.results ? session.results.filter((r) => r.correct).length : 0;
+    const total = session.results ? session.results.length : session.deck ? session.deck.length : 0;
+    const missed = total - correct;
+    const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const mastered = session.results
+      ? session.results.filter((r) => r.correct && r.pointsAfter === 0).length
+      : 0;
+    const needsReview = session.results
+      ? session.results.filter((r) => r.pointsAfter > 0).length
+      : 0;
+    const hasMissed = missed > 0;
+    const reviewParam = hasMissed ? "" : "";
+
     return `
       <section class="session-shell">
         ${renderBreadcrumbs([
           { href: buildLibraryHref(), label: "Home" },
           { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Study complete" }
+          { label: "Session complete" }
         ])}
         <div class="summary-card">
-          <h2>Deck complete</h2>
-          <p>You reached the end of the deck. Start again, shuffle, or return to the set.</p>
-          <div class="summary-actions" style="margin-top:20px">
-            <button class="ghost-button" data-action="restart-study" data-mode="normal">Start over</button>
-            <button class="button" data-action="restart-study" data-mode="shuffle">Shuffle &amp; restart</button>
-            <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderLearnSummary(set, session) {
-    const percentage = Math.round((session.correctAnswers / Math.max(1, session.answered)) * 100);
-    return `
-      <section class="session-shell">
-        ${renderBreadcrumbs([
-          { href: buildLibraryHref(), label: "Home" },
-          { href: buildLibraryHref({ setId: set.id }), label: escapeHtml(set.name) },
-          { label: "Round summary" }
-        ])}
-        <div class="summary-card" style="width:min(760px,100%)">
           <div class="summary-card__header">
             <div class="stack">
-              <h2>Round summary</h2>
-              <p>${session.correctAnswers}/${session.answered} correct in ${formatDuration(Date.now() - session.startedAt)}.</p>
+              <h2>Session complete!</h2>
+              <p>${set.name}</p>
             </div>
-            <div class="badge">${percentage}%</div>
+            <div class="badge">${pct}%</div>
           </div>
           <div class="summary-grid" style="margin:20px 0">
             <div class="stat-card">
-              <div class="meta-label">Score</div>
-              <div class="stat-value">${session.correctAnswers}/${session.answered}</div>
+              <div class="meta-label">Cards studied</div>
+              <div class="stat-value">${total}</div>
             </div>
             <div class="stat-card">
-              <div class="meta-label">Time taken</div>
-              <div class="stat-value">${formatDuration(Date.now() - session.startedAt)}</div>
+              <div class="meta-label">Correct</div>
+              <div class="stat-value correct-value">${correct}</div>
             </div>
             <div class="stat-card">
-              <div class="meta-label">Missed cards</div>
-              <div class="stat-value">${session.missedMap.size}</div>
+              <div class="meta-label">Missed</div>
+              <div class="stat-value missed-value">${missed}</div>
+            </div>
+            <div class="stat-card">
+              <div class="meta-label">Mastered</div>
+              <div class="stat-value">${mastered}</div>
             </div>
           </div>
-          ${session.missedMap.size ? `
-            <div class="stack">
-              <h3>Missed cards</h3>
-              <div class="list">
-                ${Array.from(session.missedMap.values()).map((entry) => `
-                  <div class="panel">
-                    <strong>${escapeHtml(entry.term)}</strong>
-                    <p>${escapeHtml(entry.definition)}</p>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          ` : `<p>No misses this round.</p>`}
-          <div class="summary-actions" style="margin-top:20px">
-            <button class="ghost-button" data-action="retry-missed" data-set-id="${set.id}" ${session.missedMap.size ? "" : "disabled"}>Retry missed cards only</button>
-            <button class="button" data-action="retry-all" data-set-id="${set.id}">Retry all cards</button>
+          <div class="summary-actions">
+            <button class="button" data-action="study-again" data-set-id="${set.id}" data-mode="${mode}">Study again</button>
+            ${hasMissed ? `<button class="ghost-button" data-action="review-missed" data-set-id="${set.id}" data-mode="${mode}">Review missed cards</button>` : ""}
             <button class="ghost-button" data-action="back-to-set" data-set-id="${set.id}">Back to set</button>
           </div>
         </div>
@@ -1185,21 +1372,19 @@
     const sets = state.sets.filter((item) => item.folderId === folder.id);
     const totalCards = sets.reduce((sum, item) => sum + getCardsForSet(item.id).length, 0);
     return `
-      <article class="tile folder" data-folder-tile="${folder.id}">
+      <article class="tile folder" data-folder-tile="${folder.id}" data-open-folder="${folder.id}" tabindex="0" role="button" aria-label="Open folder ${escapeAttribute(folder.name)}">
         <div class="tile__header">
           <div class="stack">
-            <strong class="tile__name inline-editable" data-open-folder="${folder.id}" contenteditable="false" data-edit-kind="folder" data-id="${folder.id}" title="${escapeAttribute(folder.name)}">${escapeHtml(truncate(folder.name))}</strong>
-            <span class="meta-copy">${sets.length} set${sets.length === 1 ? "" : "s"}</span>
+            <strong class="tile__name inline-editable" contenteditable="false" data-edit-kind="folder" data-id="${folder.id}" title="${escapeAttribute(folder.name)}">${escapeHtml(truncate(folder.name))}</strong>
+            <span class="meta-copy">${sets.length} set${sets.length === 1 ? "" : "s"} · ${totalCards} card${totalCards === 1 ? "" : "s"}</span>
           </div>
-          <span class="badge">${totalCards}</span>
         </div>
         <div class="tile__meta">
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(folder.createdAt)}</span></div>
-          <div class="meta-item"><span class="meta-label">Cards</span><span>${totalCards}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="${buildLibraryHref({ folderId: folder.id })}">Open folder</a>
           <div class="tile__actions">
+            <button class="icon-button" aria-label="Export folder" data-action="export-folder" data-folder-id="${folder.id}">Export</button>
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
         </div>
@@ -1208,28 +1393,29 @@
   }
 
   function renderSetTile(set, folder) {
+    const cardCount = getCardsForSet(set.id).length;
     return `
       <article
         class="tile set"
         draggable="true"
         tabindex="0"
+        role="button"
         data-set-tile="${set.id}"
+        data-open-set="${set.id}"
         data-folder-id="${folder ? folder.id : ""}"
-        aria-label="Set ${escapeAttribute(set.name)}"
+        aria-label="Open set ${escapeAttribute(set.name)}"
       >
         <div class="tile__header">
           <div class="stack">
-            <strong class="tile__name inline-editable" data-open-set="${set.id}" contenteditable="false" data-edit-kind="set" data-id="${set.id}" title="${escapeAttribute(set.name)}">${escapeHtml(truncate(set.name))}</strong>
-            <span class="meta-copy">${folder ? escapeHtml(folder.name) : "Standalone set"}</span>
+            <strong class="tile__name inline-editable" contenteditable="false" data-edit-kind="set" data-id="${set.id}" title="${escapeAttribute(set.name)}">${escapeHtml(truncate(set.name))}</strong>
+            <span class="meta-copy">${cardCount} card${cardCount === 1 ? "" : "s"}${folder ? " · " + escapeHtml(folder.name) : ""}</span>
           </div>
-          <span class="badge">${getCardsForSet(set.id).length}</span>
         </div>
         <div class="tile__meta">
           <div class="meta-item"><span class="meta-label">Last studied</span><span>${formatRelativeTime(set.lastStudied)}</span></div>
           <div class="meta-item"><span class="meta-label">Created</span><span>${formatDate(set.createdAt)}</span></div>
         </div>
         <div class="tile__footer">
-          <a class="tile__open" href="${buildLibraryHref({ setId: set.id })}">Open set</a>
           <div class="tile__actions">
             <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
@@ -1353,26 +1539,54 @@
           if (input) input.click();
         }
         break;
-      case "start-study":
-        navigateToStudy(target.dataset.setId, "study");
+      case "show-study-modal":
+        showStudyModeModal(target.dataset.setId);
         break;
-      case "start-learn":
-        navigateToStudy(target.dataset.setId, "learn");
+      case "start-flip-mode":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "flip" });
+        break;
+      case "show-quiz-direction":
+        state.modal.step = "select-quiz-direction";
+        renderModal();
+        break;
+      case "start-quiz-direction":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "quiz", dir: target.dataset.dir });
+        break;
+      case "show-review-mode":
+        state.modal.step = "select-review-mode";
+        renderModal();
+        break;
+      case "start-review-flip":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "flip", reviewOnly: true });
+        break;
+      case "start-review-quiz":
+        state.modal = null;
+        els.appShell && els.appShell.removeAttribute("aria-hidden");
+        renderModal();
+        navigateToStudy(target.dataset.setId, { mode: "quiz", dir: "mixed", reviewOnly: true });
         break;
       case "back-to-set":
         navigateToLibrary({ setId: target.dataset.setId });
         break;
       case "flip-study-card":
-        if (state.studySession) {
-          state.studySession.isFlipped = !state.studySession.isFlipped;
-          render();
+        if (state.studySession && !state.studySession.complete) {
+          flipStudyCard();
         }
         break;
-      case "study-next":
-        advanceStudy(1);
+      case "flip-got-it":
+        advanceStudy("got-it");
         break;
-      case "study-prev":
-        advanceStudy(-1);
+      case "flip-missed":
+        advanceStudy("missed");
         break;
       case "toggle-study-shuffle":
         toggleStudyShuffle();
@@ -1384,24 +1598,49 @@
           render();
         }
         break;
-      case "answer-choice":
-        answerLearnChoice(target.dataset.cardId, target.dataset.choiceId);
+      case "answer-quiz":
+        answerQuizChoice(target.dataset.cardId, target.dataset.choiceId);
         break;
-      case "retry-missed":
-        initLearnSession(target.dataset.setId, { missedOnly: true });
-        render();
+      case "study-again": {
+        const studyAgainMode = target.dataset.mode;
+        if (studyAgainMode === "quiz") {
+          const route = state.route;
+          initQuizSession(target.dataset.setId, { direction: route.quizDir || "term-definition", reviewOnly: false });
+          render();
+        } else {
+          initStudySession(target.dataset.setId, false, null, false);
+          render();
+        }
         break;
-      case "retry-all":
-        await resetSetBoxes(target.dataset.setId);
-        initLearnSession(target.dataset.setId);
-        render();
+      }
+      case "review-missed": {
+        const reviewMode = target.dataset.mode;
+        if (reviewMode === "quiz") {
+          const setId = target.dataset.setId;
+          if (state.quizSession) {
+            const missedIds = new Set(state.quizSession.results.filter((r) => !r.correct).map((r) => r.cardId));
+            initQuizSession(setId, { direction: state.route.quizDir || "term-definition", reviewOnly: false, missedIds: missedIds });
+          } else {
+            initQuizSession(setId, { direction: "term-definition", reviewOnly: true });
+          }
+          render();
+        } else {
+          const setId = target.dataset.setId;
+          if (state.studySession) {
+            const missedIds = new Set(state.studySession.results.filter((r) => !r.correct).map((r) => r.cardId));
+            initStudySession(setId, false, null, false, missedIds);
+          } else {
+            initStudySession(setId, false, null, true);
+          }
+          render();
+        }
         break;
-      case "restart-study":
-        initStudySession(state.route.setId, target.dataset.mode === "shuffle");
-        render();
-        break;
+      }
       case "export-set":
         exportSet(target.dataset.setId);
+        break;
+      case "export-folder":
+        exportFolder(target.dataset.folderId);
         break;
       case "export-all":
         exportAllSets();
@@ -1495,6 +1734,12 @@
       const [file] = input.files || [];
       if (!file) return;
 
+      if (file.name.endsWith(".zip")) {
+        input.value = "";
+        importFromZip(file);
+        return;
+      }
+
       file.text().then(async (text) => {
         const result = await importCardsIntoSet(input.dataset.uploadInput, text);
         input.value = "";
@@ -1565,28 +1810,32 @@
 
     if (typingContext) return;
 
-    if (state.route.view === "study" && state.studySession) {
-      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+    if (state.route.view === "flip" && state.studySession && !state.studySession.complete) {
+      if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
-        advanceStudy(1);
-      } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+        if (!state.studySession.isFlipped) {
+          flipStudyCard();
+        } else {
+          // Enter = Got it, Backspace = Missed it when flipped
+          advanceStudy("got-it");
+        }
+        return;
+      }
+      if (event.key === "Backspace") {
         event.preventDefault();
-        advanceStudy(-1);
-      } else if (event.key === " " || event.key === "Enter") {
-        event.preventDefault();
-        state.studySession.isFlipped = !state.studySession.isFlipped;
-        render();
+        if (state.studySession.isFlipped) advanceStudy("missed");
+        return;
       }
       return;
     }
 
-    if (state.route.view === "learn" && state.learnSession && /^[1-4]$/.test(event.key)) {
+    if (state.route.view === "quiz" && state.quizSession && !state.quizSession.pendingNext && /^[1-4]$/.test(event.key)) {
       event.preventDefault();
       const choiceIndex = Number(event.key) - 1;
-      const question = state.learnSession.currentQuestion;
+      const question = state.quizSession.currentQuestion;
       const choice = question?.choices?.[choiceIndex];
       if (choice) {
-        answerLearnChoice(question.card.id, choice.id);
+        answerQuizChoice(question.card.id, choice.id);
       }
       return;
     }
@@ -1598,6 +1847,19 @@
       } else {
         promptCreateSet();
       }
+      return;
+    }
+
+    if (event.key.toLowerCase() === "f" && state.route.view === "home") {
+      event.preventDefault();
+      promptCreateFolder();
+      return;
+    }
+
+    if (event.key === "/" && state.route.view === "home") {
+      event.preventDefault();
+      const searchEl = document.getElementById("library-search");
+      if (searchEl) searchEl.focus();
       return;
     }
 
@@ -1648,7 +1910,7 @@
   }
 
   function handleEscapeNavigation() {
-    if (state.route.view === "study" || state.route.view === "learn") {
+    if (state.route.view === "flip" || state.route.view === "quiz") {
       navigateToLibrary({ setId: state.route.setId });
       return;
     }
@@ -1713,7 +1975,7 @@
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "New folder",
-      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "" },
+      input: { label: "Folder name", placeholder: "e.g. Chemistry", value: "", maxLength: MAX_NAME_LENGTH },
       confirmLabel: "Create",
       danger: false,
       onConfirm: async function (inputValue) {
@@ -1736,7 +1998,7 @@
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "New set",
-      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "" },
+      input: { label: "Set name", placeholder: "e.g. Chapter 3 vocab", value: "", maxLength: MAX_NAME_LENGTH },
       confirmLabel: "Create",
       danger: false,
       onConfirm: async function (inputValue) {
@@ -1759,11 +2021,15 @@
   function confirmDeleteFolder(folderId) {
     const folder = getFolder(folderId);
     if (!folder) return;
+    const setCount = state.sets.filter((s) => s.folderId === folderId).length;
     modalTriggerEl = document.activeElement;
     state.modal = {
       title: "Delete folder?",
-      copy: "Sets inside this folder will become standalone. The folder itself will be removed.",
+      copy: setCount > 0
+        ? `This will permanently delete the folder and all ${setCount} set${setCount !== 1 ? "s" : ""} inside it, including all their cards. This cannot be undone.`
+        : "This will permanently delete this folder. This cannot be undone.",
       confirmLabel: "Delete folder",
+      danger: true,
       onConfirm: async () => {
         await deleteFolder(folderId);
         state.modal = null;
@@ -1810,25 +2076,52 @@
   }
 
   function renderModal() {
-    if (!state.modal) {
+    // Cancel any in-flight close animation so new open doesn't get cleared
+    if (modalCloseTimer) {
+      clearTimeout(modalCloseTimer);
+      modalCloseTimer = null;
       els.modalRoot.innerHTML = "";
-      // Return focus to the element that triggered the modal
-      if (modalTriggerEl && typeof modalTriggerEl.focus === "function") {
-        modalTriggerEl.focus();
-        modalTriggerEl = null;
+    }
+
+    if (!state.modal) {
+      const existingBackdrop = els.modalRoot.querySelector(".modal-backdrop");
+      const trigger = modalTriggerEl;
+      modalTriggerEl = null;
+      if (existingBackdrop && !existingBackdrop.classList.contains("is-closing")) {
+        existingBackdrop.classList.add("is-closing");
+        modalCloseTimer = setTimeout(function () {
+          modalCloseTimer = null;
+          els.modalRoot.innerHTML = "";
+          document.body.removeAttribute("aria-hidden");
+          if (trigger && typeof trigger.focus === "function") trigger.focus();
+        }, 200);
+      } else {
+        els.modalRoot.innerHTML = "";
+        document.body.removeAttribute("aria-hidden");
+        if (trigger && typeof trigger.focus === "function") trigger.focus();
       }
-      document.body.removeAttribute("aria-hidden");
+      return;
+    }
+
+    // Study mode modal — custom render
+    if (state.modal.type === "study-mode") {
+      els.modalRoot.innerHTML = renderStudyModeModal(state.modal);
+      els.appShell && els.appShell.setAttribute("aria-hidden", "true");
       return;
     }
 
     const confirmClass = state.modal.danger !== false ? "danger-button" : "button";
-    const inputHtml = state.modal.input
+    const modalInput = state.modal.input;
+    const inputMaxLen = modalInput && modalInput.maxLength ? modalInput.maxLength : null;
+    const inputHtml = modalInput
       ? `<div class="field">
-           <label for="modal-input">${escapeHtml(state.modal.input.label || "")}</label>
+           <label for="modal-input">${escapeHtml(modalInput.label || "")}</label>
            <input id="modal-input" class="input modal__input" type="text"
-             value="${escapeHtml(state.modal.input.value || "")}"
-             placeholder="${escapeHtml(state.modal.input.placeholder || "")}"
+             value="${escapeHtml(modalInput.value || "")}"
+             placeholder="${escapeHtml(modalInput.placeholder || "")}"
+             ${inputMaxLen ? `maxlength="${inputMaxLen}"` : ""}
              autocomplete="off">
+           ${inputMaxLen ? `<span id="modal-char-counter" style="font-size:0.88rem;color:var(--text-secondary);text-align:right">${(modalInput.value || "").length} / ${inputMaxLen}</span>` : ""}
          </div>`
       : "";
 
@@ -1848,6 +2141,28 @@
 
     // Prevent background interaction
     els.appShell && els.appShell.setAttribute("aria-hidden", "true");
+
+    // Click outside to close
+    const backdrop = els.modalRoot.querySelector(".modal-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", function (e) {
+        if (e.target === backdrop) {
+          if (state.modal && typeof state.modal.onCancel === "function") state.modal.onCancel();
+          state.modal = null;
+          els.appShell && els.appShell.removeAttribute("aria-hidden");
+          renderModal();
+        }
+      });
+    }
+
+    // Character counter update
+    const charInput = els.modalRoot.querySelector("#modal-input");
+    const charCounter = els.modalRoot.querySelector("#modal-char-counter");
+    if (charInput && charCounter) {
+      charInput.addEventListener("input", function () {
+        charCounter.textContent = charInput.value.length + " / " + (inputMaxLen || "");
+      });
+    }
 
     // Auto-focus: input if present, else confirm button
     const focusTarget = els.modalRoot.querySelector("#modal-input") ||
@@ -1997,11 +2312,8 @@
   async function deleteFolder(folderId) {
     const affectedSets = state.sets.filter((item) => item.folderId === folderId);
     for (const set of affectedSets) {
-      set.folderId = null;
-      set.order = nextOrder(state.sets.filter((item) => item.folderId === null && item.id !== set.id));
-      await persistEntity("sets", "update", setToRow(set));
+      await deleteSet(set.id);
     }
-
     await persistEntity("folders", "delete", { id: folderId });
     state.folders = state.folders.filter((item) => item.id !== folderId);
   }
@@ -2043,6 +2355,20 @@
     }
   }
 
+  function parseCardLine(line) {
+    // Supports: "Term | Definition", "Term\tDefinition", "Term, Definition"
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    let sep = -1;
+    if (trimmed.includes(" | ")) sep = trimmed.indexOf(" | ");
+    else if (trimmed.includes("\t")) sep = trimmed.indexOf("\t");
+    else if (trimmed.includes(",")) sep = trimmed.indexOf(",");
+    if (sep === -1) return null;
+    const term = trimmed.slice(0, sep).trim();
+    const definition = trimmed.slice(sep + (trimmed[sep] === " " ? 3 : 1)).trim();
+    return term && definition ? { term, definition } : null;
+  }
+
   async function importCardsIntoSet(setId, text) {
     const lines = text.split(/\r?\n/);
     const existing = new Set(getCardsForSet(setId).map((card) => `${card.term}\u0000${card.definition}`));
@@ -2050,12 +2376,9 @@
     let skipped = 0;
 
     for (const line of lines) {
-      if (!line.trim()) continue;
-      const commaIndex = line.indexOf(",");
-      if (commaIndex === -1) continue;
-      const term = line.slice(0, commaIndex).trim();
-      const definition = line.slice(commaIndex + 1).trim();
-      if (!term || !definition) continue;
+      const parsed = parseCardLine(line);
+      if (!parsed) continue;
+      const { term, definition } = parsed;
       const signature = `${term}\u0000${definition}`;
       if (existing.has(signature)) {
         skipped += 1;
@@ -2070,6 +2393,7 @@
         correctCount: 0,
         incorrectCount: 0,
         box: 1,
+        points: 0,
         lastSeen: null,
         order: nextOrder(getCardsForSet(setId).concat(newCards)),
       });
@@ -2086,31 +2410,85 @@
     return { imported: newCards.length, skipped };
   }
 
+  function setToTxtContent(setId) {
+    return getCardsForSet(setId)
+      .map((card) => `${card.term} | ${card.definition}`)
+      .join("\n");
+  }
+
   async function exportSet(setId) {
     const set = getSet(setId);
     if (!set) return;
-    const text = getCardsForSet(setId)
-      .map((card) => `${card.term}, ${card.definition}`)
-      .join("\n");
-    downloadTextFile(`${sanitizeFileName(set.name)}.txt`, text);
+    downloadTextFile(`${sanitizeFileName(set.name)}.txt`, setToTxtContent(setId));
     window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     showToast("Set exported");
     render();
   }
 
-  function exportAllSets() {
-    const sections = state.sets.map((set) => {
-      const lines = getCardsForSet(set.id).map((card) => `${card.term}, ${card.definition}`).join("\n");
-      return `# ${set.name}\n${lines}`;
-    });
-    downloadTextFile("carded-backup.txt", sections.join("\n\n"));
+  async function exportFolder(folderId) {
+    const folder = getFolder(folderId);
+    if (!folder) return;
+    const sets = state.sets.filter((s) => s.folderId === folderId);
+    if (!sets.length) { showToast("No sets in this folder to export"); return; }
+
+    if (typeof window.JSZip !== "undefined") {
+      const zip = new window.JSZip();
+      sets.forEach((set) => {
+        const content = setToTxtContent(set.id);
+        zip.file(`${sanitizeFileName(set.name)}.txt`, content);
+      });
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(`${sanitizeFileName(folder.name)}.zip`, blob);
+      showToast("Folder exported as .zip");
+    } else {
+      // Fallback: export as one combined .txt
+      const sections = sets.map((set) => `# ${set.name}\n${setToTxtContent(set.id)}`);
+      downloadTextFile(`${sanitizeFileName(folder.name)}.txt`, sections.join("\n\n"));
+      showToast("Folder exported as .txt");
+    }
     window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
-    showToast("Backup exported");
+    render();
+  }
+
+  async function exportAllSets() {
+    if (typeof window.JSZip !== "undefined") {
+      const zip = new window.JSZip();
+      const date = new Date().toISOString().slice(0, 10);
+
+      // Folders
+      for (const folder of state.folders) {
+        const folderSets = state.sets.filter((s) => s.folderId === folder.id);
+        for (const set of folderSets) {
+          const safeFolderName = sanitizeFileName(folder.name);
+          zip.file(`${safeFolderName}/${sanitizeFileName(set.name)}.txt`, setToTxtContent(set.id));
+        }
+      }
+      // Standalone sets
+      const standalone = state.sets.filter((s) => !s.folderId);
+      for (const set of standalone) {
+        zip.file(`${sanitizeFileName(set.name)}.txt`, setToTxtContent(set.id));
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(`Carded_Export_${date}.zip`, blob);
+      showToast("All data exported");
+    } else {
+      const sections = state.sets.map((set) => {
+        return `# ${set.name}\n${setToTxtContent(set.id)}`;
+      });
+      downloadTextFile("carded-backup.txt", sections.join("\n\n"));
+      showToast("Backup exported");
+    }
+    window.CardedUtils.safeSet(LAST_EXPORT_KEY, String(Date.now()));
     render();
   }
 
   function downloadTextFile(filename, content) {
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    downloadBlob(filename, blob);
+  }
+
+  function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -2121,6 +2499,59 @@
     URL.revokeObjectURL(url);
   }
 
+  async function importFromZip(file) {
+    if (typeof window.JSZip === "undefined") {
+      showToast("Zip import is not available right now — try again when online.");
+      return;
+    }
+    let zip;
+    try {
+      zip = await window.JSZip.loadAsync(file);
+    } catch (_) {
+      showToast("Could not read zip file.");
+      return;
+    }
+
+    const txtFiles = Object.keys(zip.files).filter((name) => !zip.files[name].dir && name.endsWith(".txt"));
+    if (!txtFiles.length) { showToast("No .txt files found in zip."); return; }
+
+    let imported = 0;
+    let setsCreated = 0;
+
+    for (const filePath of txtFiles) {
+      const parts = filePath.split("/");
+      const fileName = parts[parts.length - 1];
+      const setName = fileName.replace(/\.txt$/, "").trim();
+      if (!setName) continue;
+
+      const folderName = parts.length > 1 ? parts[0] : null;
+      const text = await zip.files[filePath].async("string");
+
+      // Find or create folder
+      let folderId = null;
+      if (folderName) {
+        let folder = state.folders.find((f) => f.name.toLowerCase() === folderName.toLowerCase());
+        if (!folder) {
+          folder = await createFolder(folderName.slice(0, MAX_NAME_LENGTH));
+        }
+        folderId = folder.id;
+      }
+
+      // Find or create set
+      let set = state.sets.find((s) => s.name.toLowerCase() === setName.toLowerCase() && s.folderId === folderId);
+      if (!set) {
+        set = await createSet(setName.slice(0, MAX_NAME_LENGTH), folderId);
+        setsCreated += 1;
+      }
+
+      const result = await importCardsIntoSet(set.id, text);
+      imported += result.imported;
+    }
+
+    showToast(`Imported ${imported} card${imported !== 1 ? "s" : ""} across ${setsCreated} new set${setsCreated !== 1 ? "s" : ""}`);
+    render();
+  }
+
   function saveStudySessionState() {
     const s = state.studySession;
     if (!s || s.complete) {
@@ -2129,10 +2560,12 @@
     }
     window.CardedUtils.safeSet(STUDY_SESSION_KEY, JSON.stringify({
       setId: s.setId,
+      mode: "flip",
       cardOrder: s.deck.map((c) => c.id),
       currentIndex: s.index,
       shuffle: s.shuffle,
       direction: s.direction,
+      reviewOnly: s.reviewOnly || false,
       startedAt: s.startedAt || Date.now(),
     }));
   }
@@ -2153,8 +2586,13 @@
     }
   }
 
-  function initStudySession(setId, shuffle = false, resumeData = null) {
-    const cards = getCardsForSet(setId);
+  function initStudySession(setId, shuffle = false, resumeData = null, reviewOnly = false, missedIds = null) {
+    let cards = getCardsForSet(setId);
+    if (missedIds && missedIds.size > 0) {
+      cards = cards.filter((c) => missedIds.has(c.id));
+    } else if (reviewOnly) {
+      cards = cards.filter((c) => (c.points || 0) > 0);
+    }
     if (!cards.length) {
       state.studySession = null;
       return;
@@ -2165,9 +2603,10 @@
     let direction = "term-definition";
     const cardMap = new Map(cards.map((c) => [c.id, c]));
 
-    if (resumeData) {
+    if (resumeData && resumeData.cardOrder) {
       deck = resumeData.cardOrder.map((id) => cardMap.get(id)).filter(Boolean);
-      index = Math.min(resumeData.currentIndex, deck.length - 1);
+      if (!deck.length) deck = cards.slice();
+      index = Math.min(resumeData.currentIndex || 0, deck.length - 1);
       direction = resumeData.direction || "term-definition";
       shuffle = resumeData.shuffle || false;
     } else {
@@ -2183,27 +2622,86 @@
       shuffle,
       direction,
       complete: false,
+      reviewOnly,
       startedAt: (resumeData && resumeData.startedAt) || Date.now(),
+      results: [],
+      mode: "flip",
     };
     saveStudySessionState();
   }
 
-  async function advanceStudy(step) {
-    const session = state.studySession;
-    if (!session) return;
+  function flipStudyCard() {
+    if (!state.studySession || state.studySession.complete) return;
+    state.studySession.isFlipped = !state.studySession.isFlipped;
+    const flipEl = document.querySelector(".flip-card");
+    if (flipEl) {
+      flipEl.classList.toggle("is-flipped", state.studySession.isFlipped);
+      // Update verdict row / hint without a full re-render
+      const hintEl = document.querySelector(".flip-hint");
+      const verdictEl = document.querySelector(".flip-verdict-row");
+      if (state.studySession.isFlipped && hintEl) {
+        const newEl = createElement(`
+          <div class="flip-verdict-row">
+            <button class="verdict-btn verdict-missed" data-action="flip-missed">
+              <span aria-hidden="true">✗</span> Missed it
+            </button>
+            <button class="verdict-btn verdict-got" data-action="flip-got-it">
+              <span aria-hidden="true">✓</span> Got it
+            </button>
+          </div>`);
+        hintEl.parentNode.replaceChild(newEl, hintEl);
+      } else if (!state.studySession.isFlipped && verdictEl) {
+        const newEl = createElement(`<div class="flip-hint">Tap the card to reveal the answer</div>`);
+        verdictEl.parentNode.replaceChild(newEl, verdictEl);
+      }
+    } else {
+      render();
+    }
+  }
 
-    if (step > 0 && session.index + 1 >= session.deck.length) {
+  async function advanceStudy(result) {
+    const session = state.studySession;
+    if (!session || session.complete) return;
+
+    const card = session.deck[session.index];
+
+    if (result === "got-it" || result === "missed") {
+      const isCorrect = result === "got-it";
+      const prevPoints = card.points || 0;
+      if (isCorrect) {
+        card.points = Math.max(0, prevPoints - 1);
+        card.correctCount = (card.correctCount || 0) + 1;
+      } else {
+        card.points = Math.min(10, prevPoints + 2);
+        card.incorrectCount = (card.incorrectCount || 0) + 1;
+      }
+      card.lastSeen = Date.now();
+      session.results.push({ cardId: card.id, correct: isCorrect, pointsAfter: card.points });
+      await persistProgress(card);
+    }
+
+    const isLast = session.index + 1 >= session.deck.length;
+    if (isLast && (result === "got-it" || result === "missed")) {
       session.complete = true;
       window.CardedUtils.safeRemove(STUDY_SESSION_KEY);
-      await recordStudyCompletion(session.setId, 100);
+      const correct = session.results.filter((r) => r.correct).length;
+      const pct = Math.round((correct / Math.max(1, session.results.length)) * 100);
+      await recordStudyCompletion(session.setId, pct, {
+        mode: "flip",
+        totalCards: session.results.length,
+        correctCount: correct,
+        startedAt: session.startedAt,
+      });
       render();
       return;
     }
 
-    session.index = Math.max(0, Math.min(session.deck.length - 1, session.index + step));
-    session.isFlipped = false;
-    saveStudySessionState();
-    render();
+    if (result === "got-it" || result === "missed") {
+      session.index += 1;
+      session.isFlipped = false;
+      saveStudySessionState();
+      render();
+    }
   }
 
   function toggleStudyShuffle() {
@@ -2219,62 +2717,74 @@
     render();
   }
 
-  function initLearnSession(setId, options = {}) {
-    const cards = options.missedOnly && state.learnSession
-      ? Array.from(state.learnSession.missedMap.values())
-      : getCardsForSet(setId);
-
-    if (cards.length < 2) {
-      state.learnSession = null;
+  function initQuizSession(setId, options = {}) {
+    let cards = getCardsForSet(setId);
+    if (options.missedIds && options.missedIds.size > 0) {
+      cards = cards.filter((c) => options.missedIds.has(c.id));
+    } else if (options.reviewOnly) {
+      cards = cards.filter((c) => (c.points || 0) > 0);
+    }
+    if (cards.length < 4) {
+      state.quizSession = null;
       return;
     }
 
-    state.learnSession = {
+    const direction = options.direction || "term-definition";
+    const deck = cards.slice();
+    shuffleArray(deck);
+
+    state.quizSession = {
       setId,
-      pool: cards.map((card) => ({ ...card })),
-      goal: Math.max(cards.length * 2, 10),
-      answered: 0,
-      correctAnswers: 0,
-      startedAt: Date.now(),
-      currentQuestion: null,
-      pendingNext: false,
-      feedbackText: "",
-      feedbackClass: "",
+      deck,
+      index: 0,
+      direction,
+      reviewOnly: options.reviewOnly || false,
       complete: false,
-      missedMap: new Map(),
+      startedAt: Date.now(),
+      pendingNext: false,
+      feedbackClass: "",
+      results: [],
+      currentQuestion: null,
     };
-    nextLearnQuestion();
+    nextQuizQuestion();
   }
 
-  function nextLearnQuestion() {
-    const session = state.learnSession;
+  function nextQuizQuestion() {
+    const session = state.quizSession;
     if (!session) return;
 
-    if (session.answered >= session.goal) {
+    if (session.index >= session.deck.length) {
       session.complete = true;
-      recordStudyCompletion(session.setId, Math.round((session.correctAnswers / Math.max(1, session.answered)) * 100));
+      const correct = session.results.filter((r) => r.correct).length;
+      recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100), {
+        mode: "quiz",
+        totalCards: session.results.length,
+        correctCount: correct,
+        startedAt: session.startedAt,
+      });
       return;
     }
 
-    const card = weightedPick(session.pool);
-    const direction = Math.random() > 0.5 ? "term-definition" : "definition-term";
-    const choices = buildChoices(card, session.pool, direction);
+    const card = session.deck[session.index];
+    const allCards = getCardsForSet(session.setId);
+    let dir = session.direction;
+    if (dir === "mixed") dir = Math.random() > 0.5 ? "term-definition" : "definition-term";
 
+    const choices = buildQuizChoices(card, allCards, dir);
     session.currentQuestion = {
       card,
-      direction,
-      prompt: direction === "term-definition" ? card.term : card.definition,
+      direction: dir,
+      prompt: dir === "term-definition" ? card.term : card.definition,
       choices,
       correctChoiceId: card.id,
       selectedChoiceId: null,
     };
-    session.feedbackText = "";
     session.feedbackClass = "";
     session.pendingNext = false;
   }
 
-  async function answerLearnChoice(cardId, choiceId) {
-    const session = state.learnSession;
+  async function answerQuizChoice(cardId, choiceId) {
+    const session = state.quizSession;
     if (!session || session.pendingNext) return;
 
     const question = session.currentQuestion;
@@ -2283,46 +2793,44 @@
 
     const isCorrect = choiceId === question.correctChoiceId;
     session.pendingNext = true;
-    session.answered += 1;
     question.selectedChoiceId = choiceId;
+    session.feedbackClass = isCorrect ? "flash-correct" : "flash-incorrect";
 
+    const prevPoints = card.points || 0;
     if (isCorrect) {
-      session.correctAnswers += 1;
-      session.feedbackText = "Correct";
-      session.feedbackClass = "flash-correct";
-      card.correctCount += 1;
-      card.box = Math.min(3, card.box + 1);
+      card.points = Math.max(0, prevPoints - 1);
+      card.correctCount = (card.correctCount || 0) + 1;
     } else {
-      session.feedbackText = `Incorrect. Correct answer: ${question.choices.find((choice) => choice.id === question.correctChoiceId).label}`;
-      session.feedbackClass = "flash-incorrect";
-      card.incorrectCount += 1;
-      card.box = 1;
-      session.missedMap.set(card.id, { term: card.term, definition: card.definition });
+      card.points = Math.min(10, prevPoints + 2);
+      card.incorrectCount = (card.incorrectCount || 0) + 1;
     }
-
     card.lastSeen = Date.now();
+    session.results.push({ cardId: card.id, correct: isCorrect, pointsAfter: card.points });
     await persistProgress(card);
-    const poolCard = session.pool.find((item) => item.id === card.id);
-    if (poolCard) {
-      poolCard.correctCount = card.correctCount;
-      poolCard.incorrectCount = card.incorrectCount;
-      poolCard.box = card.box;
-      poolCard.lastSeen = card.lastSeen;
-    }
-
-    setTimeout(() => {
-      session.pendingNext = false;
-      nextLearnQuestion();
-      render();
-    }, isCorrect ? 500 : 1500);
 
     render();
+
+    setTimeout(async () => {
+      session.index += 1;
+      session.pendingNext = false;
+      nextQuizQuestion();
+      if (session.complete) {
+        const correct = session.results.filter((r) => r.correct).length;
+        await recordStudyCompletion(session.setId, Math.round((correct / Math.max(1, session.results.length)) * 100), {
+          mode: "quiz",
+          totalCards: session.results.length,
+          correctCount: correct,
+          startedAt: session.startedAt,
+        });
+      }
+      render();
+    }, isCorrect ? 500 : 1200);
   }
 
-  function buildChoices(card, pool, direction) {
+  function buildQuizChoices(card, pool, direction) {
     const others = pool.filter((item) => item.id !== card.id);
     shuffleArray(others);
-    const choices = [card].concat(others.slice(0, Math.min(3, others.length)));
+    const choices = [card].concat(others.slice(0, 3));
     shuffleArray(choices);
     return choices.map((item) => ({
       id: item.id,
@@ -2330,7 +2838,138 @@
     }));
   }
 
-  async function recordStudyCompletion(setId, percentage) {
+  function getQuizChoiceClass(session, choice) {
+    if (!session.pendingNext) return "";
+    if (choice.id === session.currentQuestion.correctChoiceId) return "correct";
+    if (choice.id === session.currentQuestion.selectedChoiceId) return "incorrect";
+    return "";
+  }
+
+  function showStudyModeModal(setId) {
+    const cards = getCardsForSet(setId);
+    const reviewCards = cards.filter((c) => (c.points || 0) > 0);
+    const canQuiz = cards.length >= 4;
+    const hasReview = reviewCards.length > 0;
+    const canReviewQuiz = reviewCards.length >= 4;
+
+    modalTriggerEl = document.activeElement;
+    state.modal = {
+      type: "study-mode",
+      setId,
+      step: "select-mode",
+      cardCount: cards.length,
+      reviewCount: reviewCards.length,
+      canQuiz,
+      hasReview,
+      canReviewQuiz,
+    };
+    renderModal();
+  }
+
+  function renderStudyModeModal(modal) {
+    const { setId, step, canQuiz, hasReview, reviewCount, canReviewQuiz } = modal;
+
+    if (step === "select-quiz-direction") {
+      return `
+        <div class="modal-backdrop" aria-hidden="false">
+          <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 id="modal-title">Quiz direction</h2>
+            <p style="color:var(--text-secondary);margin-bottom:16px">What do you want to see as the prompt?</p>
+            <div class="mode-options">
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="term-definition" data-set-id="${setId}" title="You'll see the term and choose the matching definition">
+                <span class="mode-option__icon">→</span>
+                <div>
+                  <div class="mode-option__label">Term → Definition</div>
+                  <div class="mode-option__desc">See the term, pick the definition</div>
+                </div>
+              </button>
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="definition-term" data-set-id="${setId}" title="You'll see the definition and choose the matching term">
+                <span class="mode-option__icon">←</span>
+                <div>
+                  <div class="mode-option__label">Definition → Term</div>
+                  <div class="mode-option__desc">See the definition, pick the term</div>
+                </div>
+              </button>
+              <button class="mode-option" data-action="start-quiz-direction" data-dir="mixed" data-set-id="${setId}" title="Randomly switches between both directions">
+                <span class="mode-option__icon">↔</span>
+                <div>
+                  <div class="mode-option__label">Both (mixed)</div>
+                  <div class="mode-option__desc">Randomly alternates directions</div>
+                </div>
+              </button>
+            </div>
+            <div class="modal__actions" style="margin-top:16px">
+              <button class="ghost-button" data-action="close-modal">Cancel</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    if (step === "select-review-mode") {
+      return `
+        <div class="modal-backdrop" aria-hidden="false">
+          <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 id="modal-title">Needs Review — ${reviewCount} card${reviewCount !== 1 ? "s" : ""}</h2>
+            <p style="color:var(--text-secondary);margin-bottom:16px">How do you want to study them?</p>
+            <div class="mode-options">
+              <button class="mode-option" data-action="start-review-flip" data-set-id="${setId}">
+                <span class="mode-option__icon">🃏</span>
+                <div>
+                  <div class="mode-option__label">Flip Mode</div>
+                  <div class="mode-option__desc">Flip cards, mark Got it or Missed it</div>
+                </div>
+              </button>
+              <button class="mode-option ${canReviewQuiz ? "" : "mode-option--disabled"}" data-action="start-review-quiz" data-set-id="${setId}" ${canReviewQuiz ? "" : "disabled"}>
+                <span class="mode-option__icon">🎯</span>
+                <div>
+                  <div class="mode-option__label">Quiz Mode</div>
+                  <div class="mode-option__desc">${canReviewQuiz ? "Multiple choice questions" : "Need at least 4 cards to review"}</div>
+                </div>
+              </button>
+            </div>
+            <div class="modal__actions" style="margin-top:16px">
+              <button class="ghost-button" data-action="close-modal">Cancel</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Default: select-mode
+    return `
+      <div class="modal-backdrop" aria-hidden="false">
+        <div class="modal study-mode-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <h2 id="modal-title">Choose study mode</h2>
+          <div class="mode-options">
+            <button class="mode-option" data-action="start-flip-mode" data-set-id="${setId}">
+              <span class="mode-option__icon">🃏</span>
+              <div>
+                <div class="mode-option__label">Flip Mode</div>
+                <div class="mode-option__desc">Flip cards and mark Got it or Missed it</div>
+              </div>
+            </button>
+            <button class="mode-option ${canQuiz ? "" : "mode-option--disabled"}" data-action="show-quiz-direction" data-set-id="${setId}" ${canQuiz ? "" : "disabled"}>
+              <span class="mode-option__icon">🎯</span>
+              <div>
+                <div class="mode-option__label">Quiz Mode</div>
+                <div class="mode-option__desc">${canQuiz ? "Multiple choice questions" : "Need at least 4 cards"}</div>
+              </div>
+            </button>
+            <button class="mode-option ${hasReview ? "" : "mode-option--disabled"}" data-action="show-review-mode" data-set-id="${setId}" ${hasReview ? "" : "disabled"}>
+              <span class="mode-option__icon">⚠️</span>
+              <div>
+                <div class="mode-option__label">Needs Review</div>
+                <div class="mode-option__desc">${hasReview ? `${reviewCount} card${reviewCount !== 1 ? "s" : ""} need practice` : "All cards mastered!"}</div>
+              </div>
+            </button>
+          </div>
+          <div class="modal__actions" style="margin-top:16px">
+            <button class="ghost-button" data-action="close-modal">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function recordStudyCompletion(setId, percentage, sessionMeta) {
     const set = getSet(setId);
     if (!set) return;
     set.lastStudied = Date.now();
@@ -2355,10 +2994,31 @@
     }
     state.stats.lastStudiedDate = today;
     state.stats.totalSessions = (state.stats.totalSessions || 0) + 1;
-    state.stats.totalCardsReviewed = (state.stats.totalCardsReviewed || 0) + getCardsForSet(setId).length;
+
+    // Count cards studied this session
+    const meta = sessionMeta || {};
+    const totalCards = meta.totalCards || getCardsForSet(setId).length;
+    const correctCount = meta.correctCount || 0;
+    state.stats.totalCardsReviewed = (state.stats.totalCardsReviewed || 0) + totalCards;
 
     await persistEntity("sets", "update", setToRow(set));
     await persistStats();
+
+    // Save study session record
+    if (state.userId) {
+      const sessionRow = {
+        id: crypto.randomUUID(),
+        user_id: state.userId,
+        set_id: setId,
+        mode: meta.mode || "flip",
+        total_cards: totalCards,
+        correct_count: correctCount,
+        wrong_count: totalCards - correctCount,
+        started_at: toIso(meta.startedAt || Date.now()),
+        completed_at: nowIso(),
+      };
+      await persistEntity("study_sessions", "insert", sessionRow);
+    }
   }
 
   function getChoiceClass(session, choice) {
@@ -2491,7 +3151,9 @@
 
   function weightedPick(cards) {
     const weighted = cards.flatMap((card) => {
-      const repeats = Math.max(1, 4 - (card.box || 1)) + Math.min(card.incorrectCount || 0, 3);
+      const pts = card.points || 0;
+      // Higher points = more repetitions (1 to 3 extra)
+      const repeats = 1 + Math.floor(pts / 4);
       return Array.from({ length: repeats }, () => card);
     });
     return weighted[Math.floor(Math.random() * weighted.length)];
@@ -2584,7 +3246,7 @@
   async function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      await navigator.serviceWorker.register("/carded/sw.js");
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }
@@ -2613,15 +3275,15 @@
   let touchStartX = 0;
 
   function handleTouchStart(event) {
-    if (state.route.view !== "study") return;
+    if (state.route.view !== "flip") return;
     touchStartX = event.changedTouches[0]?.clientX || 0;
   }
 
   function handleTouchEnd(event) {
-    if (state.route.view !== "study" || !state.studySession) return;
+    if (state.route.view !== "flip" || !state.studySession || !state.studySession.isFlipped) return;
     const touchEndX = event.changedTouches[0]?.clientX || 0;
     const diff = touchEndX - touchStartX;
-    if (Math.abs(diff) < 40) return;
-    advanceStudy(diff < 0 ? 1 : -1);
+    if (Math.abs(diff) < 60) return;
+    advanceStudy(diff < 0 ? "got-it" : "missed");
   }
 })();

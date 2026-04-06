@@ -4,13 +4,20 @@
   const PASSWORD_RECOVERY_KEY = "carded_password_recovery";
 
   function showToast(message) {
+    if (window.CardedComponents && typeof window.CardedComponents.showToast === "function") {
+      window.CardedComponents.showToast(message);
+      return;
+    }
+    // Fallback for pages that don't load components.js
     const root = document.getElementById("toast-root");
     if (!root) return;
     root.textContent = "";
     const toast = document.createElement("div");
     toast.className = "toast";
     toast.setAttribute("role", "status");
-    toast.textContent = message;
+    const p = document.createElement("p");
+    p.textContent = message;
+    toast.appendChild(p);
     root.appendChild(toast);
     window.setTimeout(function () {
       toast.remove();
@@ -64,7 +71,7 @@
     const response = await window.supabaseClient.auth.signInWithOAuth({
       provider: provider,
       options: {
-        redirectTo: window.location.origin + window.BASE_PATH + "/library",
+        redirectTo: window.location.origin + window.BASE_PATH + "/login",
       },
     });
     if (response.error) throw response.error;
@@ -99,7 +106,7 @@
       throw new Error("Please wait " + resetCooldownRemaining() + "s before requesting another reset link.");
     }
     const response = await window.supabaseClient.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.BASE_PATH + "/account",
+      redirectTo: window.location.origin + window.BASE_PATH + "/account/",
     });
     // Always start cooldown and show neutral message (enumeration-safe)
     startResetCooldown();
@@ -120,8 +127,8 @@
   window.addEventListener("carded:auth-state", function (event) {
     if (event.detail.event === "PASSWORD_RECOVERY") {
       setRecoveryFlag(true);
-      if (window.CardedUtils.currentPath() !== window.BASE_PATH + "/account") {
-        window.CardedUtils.redirectTo(window.BASE_PATH + "/account", null, true);
+      if (window.CardedUtils.currentPath() !== window.BASE_PATH + "/account/") {
+        window.CardedUtils.redirectTo(window.BASE_PATH + "/account/", null, true);
       }
     }
   });
