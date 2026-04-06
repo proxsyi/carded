@@ -82,6 +82,10 @@
     return requireSupabase().from("user_stats");
   }
 
+  function profilesTable() {
+    return requireSupabase().from("user_profiles");
+  }
+
   async function getFolders(userId) {
     return unwrap(
       () => foldersTable()
@@ -274,6 +278,65 @@
     );
   }
 
+  async function getProfile(userId) {
+    const { data, error } = await profilesTable()
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  async function upsertProfile(userId, updates) {
+    return unwrap(
+      () => profilesTable()
+        .upsert({ id: userId, ...updates }, { onConflict: "id" })
+        .select()
+        .single()
+    );
+  }
+
+  async function setPendingDeletion(userId, graceDays) {
+    const days = graceDays || 30;
+    const deletionDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await requireSupabase().from("user_profiles")
+      .upsert({ id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "id" });
+    if (error) throw error;
+  }
+
+  async function cancelDeletion(userId) {
+    return unwrap(
+      () => requireSupabase().from("user_profiles")
+        .update({ pending_deletion: false, deletion_date: null })
+        .eq("id", userId)
+    );
+  }
+
+  async function checkPendingDeletion(userId) {
+    const { data, error } = await requireSupabase().from("user_profiles")
+      .select("pending_deletion, deletion_date")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data.pending_deletion ? data : null;
+  }
+
+  async function createStudySession(userId, data) {
+    return unwrap(
+      () => requireSupabase().from("study_sessions").insert({
+        id: data.id,
+        user_id: userId,
+        set_id: data.set_id,
+        mode: data.mode,
+        total_cards: data.total_cards,
+        correct_count: data.correct_count,
+        wrong_count: data.wrong_count,
+        started_at: data.started_at,
+        completed_at: data.completed_at,
+      })
+    );
+  }
+
   async function fetchAllUserData(userId) {
     const [folders, sets, progress, stats] = await Promise.all([
       getFolders(userId),
@@ -296,9 +359,13 @@
   }
 
   window.CardedSupabaseDB = {
+    cancelDeletion,
+    checkPendingDeletion,
     createCard,
     createFolder,
     createSet,
+    createStudySession,
+    setPendingDeletion,
     deleteCard,
     deleteFolder,
     deleteSet,
@@ -306,6 +373,7 @@
     getCards,
     getFolders,
     getOrCreateStats,
+    getProfile,
     getProgress,
     getSets,
     getSetsByFolder,
@@ -313,6 +381,7 @@
     updateFolder,
     updateSet,
     updateStats,
+    upsertProfile,
     upsertProgress,
   };
 })();

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Script order: config -> utils -> auth-guard -> auth -> supabase-db -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carded — Account Scheduled for Deletion</title>
+    <meta name="description" content="Your Carded account is scheduled for deletion. You can cancel and recover your account here.">
+    <meta name="theme-color" content="#1e1e2e">
+    <meta name="color-scheme" content="dark">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/carded/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
+    <link rel="manifest" href="/carded/manifest.webmanifest">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
+    <script src="/carded/theme.js?v=4.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous" defer></script>
+    <script src="/carded/config.js?v=4.0.0" defer></script>
+    <script src="/carded/utils.js?v=4.0.0" defer></script>
+    <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
+    <script src="/carded/auth.js?v=4.0.0" defer></script>
+    <script src="/carded/db.js?v=4.0.0" defer></script>
+    <script src="/carded/supabase-db.js?v=4.0.0" defer></script>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <main class="auth-shell" id="main">
+      <section class="auth-card" style="max-width:480px">
+        <p class="eyebrow" style="color:var(--accent)">Account Deletion Scheduled</p>
+        <h1 style="font-size:1.5rem">Your account is scheduled for deletion</h1>
+        <p class="auth-copy" id="deletion-countdown-text">Your account and all associated data will be permanently deleted.</p>
+        <div class="stack" style="margin-top:24px">
+          <button id="cancel-deletion-btn" class="primary-button" type="button">Keep my account</button>
+          <button id="export-data-btn" class="ghost-button" type="button">Export my data before it's gone</button>
+          <button id="sign-out-btn" class="ghost-button" type="button" style="color:var(--text-muted)">Sign out</button>
+        </div>
+        <p class="auth-footer" style="margin-top:24px;color:var(--text-muted);font-size:0.8125rem">
+          Changed your mind? Click "Keep my account" to cancel the deletion and restore full access immediately.
+        </p>
+      </section>
+    </main>
+    <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
+    <script defer>
+      function showToast(message) {
+        var root = document.getElementById("toast-root");
+        if (!root) return;
+        var el = document.createElement("div");
+        el.className = "toast";
+        el.textContent = message;
+        root.appendChild(el);
+        window.setTimeout(function () { el.remove(); }, 4000);
+      }
+
+      document.addEventListener("DOMContentLoaded", async function () {
+        // This page is accessible to authenticated users only.
+        // The auth-guard will NOT redirect pending-deletion page users away since
+        // guardPage skips the pending-deletion check on this path itself.
+        var session = await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        if (!session) return;
+
+        var deletionRecord = await window.CardedSupabaseDB.checkPendingDeletion(session.user.id).catch(function () { return null; });
+
+        if (!deletionRecord) {
+          // No pending deletion — user got here somehow, send them to library
+          window.CardedUtils.redirectTo(window.BASE_PATH + "/library", null, true);
+          return;
+        }
+
+        // Compute and display countdown
+        var deletionDate = new Date(deletionRecord.deletion_date);
+        var now = new Date();
+        var daysLeft = Math.ceil((deletionDate - now) / (1000 * 60 * 60 * 24));
+        var countdownText = document.getElementById("deletion-countdown-text");
+        if (daysLeft > 0) {
+          countdownText.textContent = "Your account and all data will be permanently deleted in " + daysLeft + " day" + (daysLeft !== 1 ? "s" : "") + " (" + deletionDate.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) + "). This cannot be undone after the deadline.";
+        } else {
+          countdownText.textContent = "Your account deletion deadline has passed. Your data may be removed shortly.";
+        }
+
+        // Keep my account
+        document.getElementById("cancel-deletion-btn").addEventListener("click", async function () {
+          var btn = this;
+          btn.disabled = true;
+          btn.textContent = "Restoring…";
+          try {
+            await window.CardedSupabaseDB.cancelDeletion(session.user.id);
+            window.CardedUtils.redirectTo(window.BASE_PATH + "/library", null, true);
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Keep my account";
+            showToast(err.message || "Something went wrong. Please try again.");
+          }
+        });
+
+        // Export data
+        document.getElementById("export-data-btn").addEventListener("click", async function () {
+          var btn = this;
+          btn.disabled = true;
+          btn.textContent = "Exporting…";
+          try {
+            var allData = await window.CardedSupabaseDB.fetchAllUserData(session.user.id);
+            var zip = new window.JSZip();
+            var sets = allData.sets || [];
+            var cards = allData.cards || [];
+            if (sets.length === 0) {
+              showToast("No sets to export.");
+              btn.disabled = false;
+              btn.textContent = "Export my data before it's gone";
+              return;
+            }
+            sets.forEach(function (set) {
+              var setCards = cards.filter(function (c) { return c.set_id === set.id; });
+              var lines = setCards.map(function (c) { return (c.term || "") + " | " + (c.definition || ""); });
+              zip.file(set.name.replace(/[^a-z0-9 \-_]/gi, "_") + ".txt", lines.join("\n"));
+            });
+            var blob = await zip.generateAsync({ type: "blob" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "carded-export.zip";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            showToast(err.message || "Export failed. Please try again.");
+          } finally {
+            btn.disabled = false;
+            btn.textContent = "Export my data before it's gone";
+          }
+        });
+
+        // Sign out
+        document.getElementById("sign-out-btn").addEventListener("click", async function () {
+          await window.CardedAuth.signOut().catch(function () {});
+          window.CardedUtils.redirectTo(window.BASE_PATH, null, true);
+        });
+      });
+    </script>
+  </body>
+</html>

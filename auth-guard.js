@@ -2,6 +2,7 @@
   "use strict";
 
   const RETURN_URL_KEY = "carded_return_url";
+  const LOCAL_MODE_KEY = "carded_local_mode";
   const PUBLIC_PATHS = new Set([
     window.BASE_PATH,
     window.BASE_PATH + "/login",
@@ -10,6 +11,18 @@
     window.BASE_PATH + "/tos",
     window.BASE_PATH + "/privacy",
   ]);
+
+  function isLocalMode() {
+    return window.CardedUtils && window.CardedUtils.safeGet(LOCAL_MODE_KEY) === "true";
+  }
+
+  function enterLocalMode() {
+    window.CardedUtils && window.CardedUtils.safeSet(LOCAL_MODE_KEY, "true");
+  }
+
+  function exitLocalMode() {
+    window.CardedUtils && window.CardedUtils.safeRemove(LOCAL_MODE_KEY);
+  }
 
   let authSubscription = null;
 
@@ -47,6 +60,11 @@
       window.location.replace(window.location.origin + returnTo);
       return;
     }
+    const onboardingDone = window.CardedUtils.safeGet("carded_onboarding_complete");
+    if (!onboardingDone) {
+      window.CardedUtils.redirectTo(window.BASE_PATH + "/setup", null, true);
+      return;
+    }
     window.CardedUtils.redirectTo(window.BASE_PATH + "/library", null, true);
   }
 
@@ -71,6 +89,18 @@
   async function guardPage(options) {
     const config = options || {};
     const requiresAuth = Boolean(config.requiresAuth);
+
+    // Local mode: bypass all Supabase auth checks
+    if (isLocalMode()) {
+      if (PUBLIC_PATHS.has(getCurrentAppPath()) && getCurrentAppPath() !== window.BASE_PATH) {
+        // On login/signup pages in local mode → redirect to library
+        window.CardedUtils.redirectTo(window.BASE_PATH + "/library", null, true);
+        return null;
+      }
+      // Return a fake local session object so pages work
+      return { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
+    }
+
     const session = await getSession().catch(function () {
       return null;
     });
@@ -83,6 +113,23 @@
     if (!requiresAuth && session && PUBLIC_PATHS.has(getCurrentAppPath())) {
       redirectAuthedHome();
       return session;
+    }
+
+    // Check for pending account deletion on authenticated pages (except the recovery page itself)
+    if (
+      session &&
+      getCurrentAppPath() !== window.BASE_PATH + "/pending-deletion" &&
+      window.CardedSupabaseDB
+    ) {
+      try {
+        const deletionRecord = await window.CardedSupabaseDB.checkPendingDeletion(session.user.id);
+        if (deletionRecord) {
+          window.CardedUtils.redirectTo(window.BASE_PATH + "/pending-deletion", null, true);
+          return null;
+        }
+      } catch (_e) {
+        // Non-fatal: proceed normally if check fails
+      }
     }
 
     if (
@@ -119,7 +166,7 @@
   function maybeHandleRecoveryRedirect() {
     const type = readHashParams().get("type");
     if (type === "recovery" && getCurrentAppPath() === window.BASE_PATH) {
-      window.location.replace(window.location.origin + window.BASE_PATH + "/account" + window.location.hash);
+      window.location.replace(window.location.origin + window.BASE_PATH + "/account/" + window.location.hash);
       return true;
     }
     return false;
@@ -129,8 +176,11 @@
 
   window.CardedAuthGuard = {
     consumeReturnUrl,
+    enterLocalMode,
+    exitLocalMode,
     getSession,
     guardPage,
+    isLocalMode,
     maybeHandleRecoveryRedirect,
     readHashParams,
     redirectAuthedHome,

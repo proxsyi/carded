@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Script order: config -> utils -> auth-guard -> auth -->
+    <!-- Script order: config -> utils -> auth -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carded — Study smarter. Remember more.</title>
@@ -20,31 +20,56 @@
     <link rel="manifest" href="/carded/manifest.webmanifest">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; frame-ancestors 'none';">
     <meta name="referrer" content="no-referrer">
-    <link rel="stylesheet" href="/carded/styles.css?v=3.0.0">
+    <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
+    <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
-    <script src="/carded/config.js?v=3.0.0" defer></script>
-    <script src="/carded/utils.js?v=3.0.0" defer></script>
-    <script src="/carded/auth-guard.js?v=3.0.0" defer></script>
-    <script src="/carded/auth.js?v=3.0.0" defer></script>
+    <script src="/carded/config.js?v=4.0.0" defer></script>
+    <script src="/carded/utils.js?v=4.0.0" defer></script>
+    <script src="/carded/auth.js?v=4.0.0" defer></script>
+    <script src="/carded/shortcuts.js?v=4.0.0" defer></script>
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
+    <header class="topbar" id="landing-topbar">
+      <div class="topbar__brand">
+        <a href="/carded" class="brand-link" id="homepage-brand-link" aria-label="Carded home">
+          <span class="brand-mark" aria-hidden="true">🃏</span>
+          <span class="brand-text">Carded</span>
+        </a>
+      </div>
+      <div class="topbar__actions" id="landing-header-actions">
+        <button class="icon-button" id="landing-theme-toggle" type="button" aria-label="Toggle theme">
+          <span id="landing-theme-moon" aria-hidden="true">🌙</span>
+          <span id="landing-theme-sun" aria-hidden="true" style="display:none">☀️</span>
+        </button>
+        <a class="ghost-button" href="/carded/login" id="landing-login-btn">Log in</a>
+      </div>
+    </header>
     <main class="landing-page" id="main">
       <div id="install-banner" class="install-banner hidden">
         <p>Install Carded for offline access.</p>
         <button id="install-button" class="button" type="button">Install</button>
       </div>
       <section class="landing-hero">
-        <div class="landing-brand">
-          <span class="brand-mark" aria-hidden="true">🃏</span>
-          <span class="brand-text">Carded</span>
-        </div>
         <h1>Study smarter. Remember more.</h1>
         <p class="section-copy">Offline-first flashcards with cloud sync, fast study sessions, and zero clutter.</p>
         <div class="landing-actions">
-          <a class="button" href="/carded/login">Get Started</a>
-          <a class="ghost-button" href="/carded/privacy">Privacy</a>
+          <a class="button" href="/carded/login" id="landing-hero-btn">Get Started</a>
+        </div>
+      </section>
+      <section class="landing-demo" aria-hidden="true">
+        <div class="landing-demo__card">
+          <div class="landing-demo__inner">
+            <div class="landing-demo__front">
+              <span class="landing-demo__label">Term</span>
+              <span class="landing-demo__term">Derivative</span>
+            </div>
+            <div class="landing-demo__back">
+              <span class="landing-demo__label">Definition</span>
+              <span class="landing-demo__definition">Rate of change of a function at a given point</span>
+            </div>
+          </div>
         </div>
       </section>
       <section class="landing-grid" aria-label="Feature highlights">
@@ -57,8 +82,8 @@
           <p>Supabase keeps your folders, sets, cards, and progress aligned across devices.</p>
         </article>
         <article class="panel">
-          <h2>Study tracking</h2>
-          <p>Review stats and progress stay attached to your account instead of a single browser.</p>
+          <h2>Smart review</h2>
+          <p>Cards you miss show up more often. Master them all to clear your review queue.</p>
         </article>
         <article class="panel">
           <h2>Free and open source</h2>
@@ -99,8 +124,118 @@
             return;
           }
         }
-        if (window.CardedAuthGuard.maybeHandleRecoveryRedirect()) return;
-        await window.CardedAuthGuard.guardPage({ requiresAuth: false });
+        // Handle email recovery link (type=recovery in URL hash)
+        var hashStr = window.location.hash || "";
+        var hParams = new URLSearchParams(hashStr.replace(/^#/, ""));
+        if (hParams.get("type") === "recovery" && window.location.pathname === window.BASE_PATH) {
+          window.location.replace(window.location.origin + window.BASE_PATH + "/account/" + window.location.hash);
+          return;
+        }
+
+        // Get session for UI updates — homepage is always public, never redirect
+        var session = null;
+        if (window.supabaseClient) {
+          var sessionResp = await window.supabaseClient.auth.getSession().catch(function () {
+            return { data: { session: null } };
+          });
+          session = (sessionResp.data && sessionResp.data.session) || null;
+        }
+        // Also check local mode
+        if (!session && window.CardedUtils && window.CardedUtils.safeGet("carded_local_mode") === "true") {
+          session = { user: { id: "local-user", email: "", user_metadata: {} }, local: true };
+        }
+
+        // Wire theme toggle in topbar
+        var themeToggle = document.getElementById("landing-theme-toggle");
+        if (themeToggle) {
+          function updateThemeIcons() {
+            var stored = window.CardedTheme ? window.CardedTheme.getStoredTheme() : "dark";
+            var eff = window.CardedTheme ? window.CardedTheme.effectiveTheme(stored) : "dark";
+            var moon = document.getElementById("landing-theme-moon");
+            var sun = document.getElementById("landing-theme-sun");
+            if (moon) moon.style.display = eff === "dark" ? "" : "none";
+            if (sun) sun.style.display = eff !== "dark" ? "" : "none";
+            themeToggle.setAttribute("aria-label", eff === "dark" ? "Switch to light theme" : "Switch to dark theme");
+          }
+          updateThemeIcons();
+          themeToggle.addEventListener("click", function () {
+            if (window.CardedTheme) window.CardedTheme.cycleTheme();
+            updateThemeIcons();
+          });
+        }
+
+        // Update header and hero based on auth state
+        var loginBtn = document.getElementById("landing-login-btn");
+        var heroBtn = document.getElementById("landing-hero-btn");
+        var brandLink = document.getElementById("homepage-brand-link");
+        if (session && session.user) {
+          // Logged in or local mode — show profile circle in topbar, "Library →" in hero
+          if (loginBtn) {
+            var meta = session.user.user_metadata || {};
+            var name = meta.full_name || meta.name || session.user.email || "";
+            var initial = name.charAt(0).toUpperCase() || "?";
+            var profileEl = document.createElement("a");
+            profileEl.className = "account-link";
+            profileEl.href = "/carded/account/";
+            profileEl.setAttribute("aria-label", "Open account");
+            profileEl.innerHTML = '<span class="account-link__avatar" aria-hidden="true">' + initial + '</span>';
+            loginBtn.replaceWith(profileEl);
+            // Async: load custom/provider pfp if set
+            (async function () {
+              var pref = window.CardedUtils ? window.CardedUtils.safeGet("carded_pfp_preference") : null;
+              var avatarEl = profileEl.querySelector(".account-link__avatar");
+              if (!avatarEl || session.local) return;
+              if (pref === "provider" && meta.avatar_url) {
+                avatarEl.innerHTML = '<img src="' + meta.avatar_url.replace(/"/g, "") + '" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">';
+              } else if (pref === "custom" && window.CardedDB) {
+                try {
+                  var dataUrl = await window.CardedDB.kvGet("profile_pic_custom");
+                  if (dataUrl) {
+                    avatarEl.innerHTML = '<img src="' + dataUrl.replace(/"/g, "") + '" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">';
+                  }
+                } catch (_) {}
+              }
+            })();
+          }
+          if (heroBtn) {
+            heroBtn.href = "/carded/library";
+            heroBtn.textContent = "Library →";
+          }
+          if (brandLink) brandLink.href = "/carded/library";
+        }
+
+        // Interactive demo card — click to flip, auto-flip loop
+        var demoCard = document.querySelector(".landing-demo__card");
+        if (demoCard) {
+          var demoFlipped = false;
+          var demoTimer = null;
+
+          function flipDemo(flipped) {
+            demoFlipped = flipped;
+            demoCard.parentElement.classList.toggle("landing-demo--flipped", flipped);
+          }
+
+          function scheduleAutoFlip() {
+            clearTimeout(demoTimer);
+            demoTimer = setTimeout(function () {
+              flipDemo(!demoFlipped);
+              scheduleAutoFlip();
+            }, 4000);
+          }
+
+          demoCard.addEventListener("click", function () {
+            clearTimeout(demoTimer);
+            flipDemo(!demoFlipped);
+            // Resume auto-flip after 6s of inactivity
+            demoTimer = setTimeout(function () {
+              scheduleAutoFlip();
+            }, 6000);
+          });
+
+          // Start auto-flip after 4s
+          scheduleAutoFlip();
+        }
+
         var deferredPrompt = null;
         window.addEventListener("beforeinstallprompt", function (event) {
           event.preventDefault();
