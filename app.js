@@ -116,12 +116,9 @@
           await window.CardedDB.deleteWhere("sets", (r) => r.user_id === "local-user");
           await window.CardedDB.deleteWhere("cards", (r) => r.user_id === "local-user");
           await window.CardedDB.deleteWhere("user_card_progress", (r) => r.user_id === "local-user");
-          // Queue walkthrough for after the library renders (if not already done)
-          try {
-            if (localStorage.getItem("carded_walkthrough_complete") !== "true") {
-              localStorage.setItem("carded_walkthrough_pending", "true");
-            }
-          } catch (_) {}
+          // Always queue walkthrough after first account creation + data transfer
+          try { localStorage.setItem("carded_walkthrough_pending", "true"); } catch (_) {}
+          try { localStorage.removeItem("carded_walkthrough_complete"); } catch (_) {}
         }
       }
     }
