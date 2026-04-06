@@ -116,6 +116,12 @@
           await window.CardedDB.deleteWhere("sets", (r) => r.user_id === "local-user");
           await window.CardedDB.deleteWhere("cards", (r) => r.user_id === "local-user");
           await window.CardedDB.deleteWhere("user_card_progress", (r) => r.user_id === "local-user");
+          // Queue walkthrough for after the library renders (if not already done)
+          try {
+            if (localStorage.getItem("carded_walkthrough_complete") !== "true") {
+              localStorage.setItem("carded_walkthrough_pending", "true");
+            }
+          } catch (_) {}
         }
       }
     }
@@ -207,6 +213,11 @@
     handleRouteChange();
     maybePromptLegacyMigration();
     document.body.classList.add("ready");
+    // Trigger walkthrough if pending (catches the merge-flow case where the flag
+    // was set after the initial maybeAutoStart() already ran at page load)
+    if (window.CardedWalkthrough) {
+      setTimeout(function () { window.CardedWalkthrough.maybeAutoStart(); }, 800);
+    }
   }
 
   function showStorageError() {
