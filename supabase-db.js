@@ -299,12 +299,9 @@
   async function setPendingDeletion(userId, graceDays) {
     const days = graceDays || 30;
     const deletionDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-    return unwrap(
-      () => requireSupabase().from("user_profiles")
-        .upsert({ id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "id" })
-        .select()
-        .single()
-    );
+    const { error } = await requireSupabase().from("user_profiles")
+      .upsert({ id: userId, pending_deletion: true, deletion_date: deletionDate }, { onConflict: "id" });
+    if (error) throw error;
   }
 
   async function cancelDeletion(userId) {
