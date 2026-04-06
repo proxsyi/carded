@@ -2025,7 +2025,7 @@ kbd {
   inset: 0;
   z-index: 1000;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.6);
+  background: transparent;
 }
 
 .wt-spotlight {

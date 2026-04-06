@@ -180,6 +180,22 @@
             profileEl.setAttribute("aria-label", "Open account");
             profileEl.innerHTML = '<span class="account-link__avatar" aria-hidden="true">' + initial + '</span>';
             loginBtn.replaceWith(profileEl);
+            // Async: load custom/provider pfp if set
+            (async function () {
+              var pref = window.CardedUtils ? window.CardedUtils.safeGet("carded_pfp_preference") : null;
+              var avatarEl = profileEl.querySelector(".account-link__avatar");
+              if (!avatarEl || session.local) return;
+              if (pref === "provider" && meta.avatar_url) {
+                avatarEl.innerHTML = '<img src="' + meta.avatar_url.replace(/"/g, "") + '" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">';
+              } else if (pref === "custom" && window.CardedDB) {
+                try {
+                  var dataUrl = await window.CardedDB.kvGet("profile_pic_custom");
+                  if (dataUrl) {
+                    avatarEl.innerHTML = '<img src="' + dataUrl.replace(/"/g, "") + '" alt="" aria-hidden="true" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block">';
+                  }
+                } catch (_) {}
+              }
+            })();
           }
           if (heroBtn) {
             heroBtn.href = "/carded/library";
