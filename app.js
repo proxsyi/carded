@@ -329,15 +329,24 @@
 
   function renderLoadingState() {
     els.app.innerHTML = `
-      <section class="stack">
-        <div class="skeleton skeleton-title"></div>
-        <div class="skeleton skeleton-copy"></div>
+      <section>
+        <div class="skeleton-section-header">
+          <div class="skeleton-section-header__text">
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-copy"></div>
+          </div>
+          <div class="skeleton-section-header__actions">
+            <div class="skeleton skeleton-btn skeleton-btn--ghost"></div>
+            <div class="skeleton skeleton-btn skeleton-btn--primary"></div>
+          </div>
+        </div>
         <div class="tile-grid">
           <div class="skeleton skeleton-tile"></div>
           <div class="skeleton skeleton-tile"></div>
           <div class="skeleton skeleton-tile"></div>
+          <div class="skeleton skeleton-tile"></div>
         </div>
-        ${state.longLoad ? `<p class="section-copy">Taking longer than usual...</p>` : ""}
+        ${state.longLoad ? `<p class="section-copy" style="margin-top:20px">Taking longer than usual…</p>` : ""}
       </section>
     `;
   }

@@ -1541,17 +1541,50 @@ select:focus-visible,
 }
 
 .skeleton-title {
-  width: min(320px, 80%);
-  height: 28px;
+  width: min(220px, 60%);
+  height: 32px;
 }
 
 .skeleton-copy {
-  width: min(540px, 100%);
+  width: min(340px, 80%);
   height: 16px;
+  margin-top: 6px;
+}
+
+.skeleton-btn {
+  height: 36px;
+  border-radius: 8px;
+}
+
+.skeleton-btn--ghost {
+  width: 96px;
+}
+
+.skeleton-btn--primary {
+  width: 80px;
 }
 
 .skeleton-tile {
-  min-height: 220px;
+  min-height: 140px;
+  border-radius: 16px;
+}
+
+.skeleton-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+
+.skeleton-section-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.skeleton-section-header__actions {
+  display: flex;
+  gap: 8px;
 }
 
 @keyframes skeleton-shimmer {
