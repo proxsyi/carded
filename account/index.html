@@ -532,28 +532,12 @@
           }
           markThemeSelected(currentTheme);
           document.querySelectorAll("[data-theme-choice]").forEach(function (btn) {
-            btn.addEventListener("mouseenter", function () {
-              if (window.CardedTheme) window.CardedTheme.applyTheme(btn.dataset.themeChoice);
-            });
-            btn.addEventListener("mouseleave", function () {
-              if (window.CardedTheme) window.CardedTheme.applyTheme(currentTheme);
-            });
             btn.addEventListener("click", function () {
               var newTheme = btn.dataset.themeChoice;
               if (newTheme === currentTheme) return;
-              var prevTheme = currentTheme;
               currentTheme = newTheme;
               markThemeSelected(newTheme);
-              if (window.CardedTheme) {
-                // Hover already applied the new theme visually — snap back to previous
-                // so the CSS transition actually fires when setTheme animates forward.
-                window.CardedTheme.applyTheme(prevTheme);
-                requestAnimationFrame(function () {
-                  requestAnimationFrame(function () {
-                    window.CardedTheme.setTheme(newTheme);
-                  });
-                });
-              }
+              if (window.CardedTheme) window.CardedTheme.setTheme(newTheme);
             });
           });
           var wtBtn = document.getElementById("show-walkthrough-btn");

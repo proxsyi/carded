@@ -75,7 +75,7 @@
     }
   });
 
-  // Listen for theme changes from other tabs
+  // Listen for theme changes from other tabs via BroadcastChannel
   if (typeof BroadcastChannel !== "undefined") {
     try {
       const bc = new BroadcastChannel("carded-theme");
@@ -86,6 +86,14 @@
       };
     } catch (_) {}
   }
+
+  // Fallback: storage event fires on other tabs when localStorage changes
+  window.addEventListener("storage", function (event) {
+    if (event.key === THEME_KEY && event.newValue) {
+      applyTheme(event.newValue);
+      updateToggleIcons(event.newValue);
+    }
+  });
 
   // Initialize on load
   function init() {
