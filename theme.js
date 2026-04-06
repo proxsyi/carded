@@ -84,6 +84,16 @@
     }
   });
 
+  // Re-apply theme whenever the tab becomes visible (covers tab-switching,
+  // alt-tab back to browser, and any case where storage/BC events were missed)
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      var theme = getStoredTheme();
+      applyTheme(theme);
+      updateToggleIcons(theme);
+    }
+  });
+
   // Listen for theme changes from other tabs via BroadcastChannel
   if (typeof BroadcastChannel !== "undefined") {
     try {

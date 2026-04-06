@@ -740,6 +740,14 @@
         updateTopbarAvatar();
       }
     });
+    // Refresh avatar on bfcache restore (back/forward navigation)
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) updateTopbarAvatar();
+    });
+    // Refresh avatar when tab regains visibility (same-tab or multi-tab)
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") updateTopbarAvatar();
+    });
   }
 
   function handleRouteChange() {
