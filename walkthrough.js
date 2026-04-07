@@ -17,7 +17,7 @@
 
   var els = {
     backdrop: null,
-    spotlight: null,
+    ring: null,
     tooltip: null,
     progressBar: null,
     titleEl: null,
@@ -102,16 +102,25 @@
   }
 
   function positionSpotlight(rect) {
-    if (!els.spotlight) return;
+    if (!els.backdrop) return;
     if (!rect) {
-      els.spotlight.style.opacity = "0";
+      els.backdrop.style.clipPath = "";
+      if (els.ring) els.ring.style.opacity = "0";
       return;
     }
-    els.spotlight.style.opacity = "1";
-    els.spotlight.style.top = rect.top + "px";
-    els.spotlight.style.left = rect.left + "px";
-    els.spotlight.style.width = rect.width + "px";
-    els.spotlight.style.height = rect.height + "px";
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var t = rect.top, l = rect.left, r = rect.left + rect.width, b = rect.top + rect.height;
+    // Outer rect (clockwise) minus inner rect (counter-clockwise) = dark overlay with transparent hole
+    els.backdrop.style.clipPath = "path('M 0 0 L " + vw + " 0 L " + vw + " " + vh + " L 0 " + vh + " Z " +
+      "M " + l + " " + t + " L " + l + " " + b + " L " + r + " " + b + " L " + r + " " + t + " Z')";
+    if (els.ring) {
+      els.ring.style.opacity = "1";
+      els.ring.style.top = t + "px";
+      els.ring.style.left = l + "px";
+      els.ring.style.width = rect.width + "px";
+      els.ring.style.height = rect.height + "px";
+    }
   }
 
   function positionTooltip(rect) {
@@ -240,7 +249,7 @@
 
     // Animate transition
     els.tooltip.style.opacity = "0";
-    if (els.spotlight) els.spotlight.style.opacity = "0";
+    if (els.ring) els.ring.style.opacity = "0";
 
     setTimeout(function () {
       if (!state.active) return;
@@ -287,7 +296,7 @@
     }
 
     els.backdrop = null;
-    els.spotlight = null;
+    els.ring = null;
     els.tooltip = null;
     els.progressBar = null;
     els.titleEl = null;
@@ -333,15 +342,16 @@
   }
 
   function buildOverlay() {
-    // Backdrop (dark overlay)
+    // Backdrop (dark overlay — clip-path creates the spotlight hole)
     var backdrop = document.createElement("div");
     backdrop.className = "wt-backdrop";
     backdrop.setAttribute("aria-hidden", "true");
 
-    // Spotlight hole
-    var spotlight = document.createElement("div");
-    spotlight.className = "wt-spotlight";
-    backdrop.appendChild(spotlight);
+    // Ring (accent border drawn around the highlighted element)
+    var ring = document.createElement("div");
+    ring.className = "wt-ring";
+    ring.style.opacity = "0";
+    backdrop.appendChild(ring);
 
     // Tooltip
     var tooltip = document.createElement("div");
@@ -375,7 +385,7 @@
       '</div>';
 
     backdrop.appendChild(tooltip);
-    return { backdrop, spotlight, tooltip };
+    return { backdrop, ring, tooltip };
   }
 
   function start() {
@@ -384,7 +394,7 @@
 
     var built = buildOverlay();
     els.backdrop = built.backdrop;
-    els.spotlight = built.spotlight;
+    els.ring = built.ring;
     els.tooltip = built.tooltip;
 
     els.progressBar = els.tooltip.querySelector(".wt-progress-bar");

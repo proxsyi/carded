@@ -2046,17 +2046,16 @@ kbd {
   inset: 0;
   z-index: 1000;
   pointer-events: none;
-  background: transparent;
+  background: var(--bg-overlay);
 }
 
-.wt-spotlight {
+.wt-ring {
   position: fixed;
   border-radius: 10px;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
-  background: transparent;
-  transition: top 0.4s ease, left 0.4s ease, width 0.4s ease, height 0.4s ease, opacity 0.3s ease;
-  z-index: 1001;
+  outline: 2px solid rgba(255, 255, 255, 0.55);
   pointer-events: none;
+  transition: top 0.35s ease, left 0.35s ease, width 0.35s ease, height 0.35s ease, opacity 0.25s ease;
+  z-index: 1001;
 }
 
 .wt-tooltip {
