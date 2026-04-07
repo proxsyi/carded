@@ -38,8 +38,8 @@
       if (!error) return data;
 
       if (isAuthError(error)) {
-        if (window.CardedAuth && typeof window.CardedAuth.showToast === "function") {
-          window.CardedAuth.showToast("Session expired. Please sign in again.");
+        if (window.CardedUtils && typeof window.CardedUtils.showToast === "function") {
+          window.CardedUtils.showToast("Session expired. Please sign in again.");
         }
         window.location.replace(window.location.origin + window.BASE_PATH + "/signin");
         throw error;
@@ -47,8 +47,8 @@
 
       if (isForbiddenError(error)) {
         console.error(error);
-        if (window.CardedAuth && typeof window.CardedAuth.showToast === "function") {
-          window.CardedAuth.showToast("Something went wrong. Please try again.");
+        if (window.CardedUtils && typeof window.CardedUtils.showToast === "function") {
+          window.CardedUtils.showToast("Something went wrong. Please try again.");
         }
         throw error;
       }
@@ -321,6 +321,14 @@
     return data.pending_deletion ? data : null;
   }
 
+  async function fetchStudySessions(userId) {
+    return unwrap(
+      () => requireSupabase().from("study_sessions")
+        .select("*")
+        .eq("user_id", userId)
+    );
+  }
+
   async function createStudySession(userId, data) {
     return unwrap(
       () => requireSupabase().from("study_sessions").insert({
@@ -365,6 +373,7 @@
     createFolder,
     createSet,
     createStudySession,
+    fetchStudySessions,
     setPendingDeletion,
     deleteCard,
     deleteFolder,

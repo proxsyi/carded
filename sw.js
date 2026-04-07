@@ -1,4 +1,4 @@
-const CACHE_NAME = "carded-static-v18";
+const CACHE_NAME = "carded-static-v19";
 const APP_SHELL_ASSETS = [
   "./",
   "./index.html",

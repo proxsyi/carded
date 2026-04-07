@@ -1926,8 +1926,49 @@ kbd {
     align-items: stretch;
   }
 
+  /* Section headers: wrap action buttons below the title on narrow screens */
+  .section-header,
+  .view-header {
+    flex-wrap: wrap;
+  }
+
+  .section-header > div:last-child,
+  .view-header > div:last-child {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Prevent modals from edge-to-edge on very small screens */
+  .modal-backdrop {
+    padding: 16px;
+  }
+
   .modal {
     padding: 20px 16px;
+    border-radius: 12px;
+  }
+
+  /* Ensure select/input controls fill width in column layout */
+  .control-row .field,
+  .control-row .select {
+    width: 100%;
+  }
+
+  /* Breadcrumbs: tighten on small screens */
+  .breadcrumbs {
+    font-size: 0.85rem;
+    gap: 6px;
+  }
+
+  /* Study session toolbar: stack buttons on narrow screens */
+  .session-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Flip card content: smaller font on narrow screens */
+  .flip-content {
+    font-size: clamp(1rem, 4.5vw, 1.3rem);
   }
 }
 

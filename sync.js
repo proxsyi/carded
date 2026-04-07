@@ -264,6 +264,27 @@
     }
   }
 
+  async function syncStudySessions(userId) {
+    if (!userId) return;
+    try {
+      const remote = await window.CardedSupabaseDB.fetchStudySessions(userId);
+      if (!remote || !remote.length) return;
+      // Upsert remote sessions into Dexie — newer record wins on conflict
+      const local = await window.CardedDB.getStudySessions(userId);
+      const localMap = new Map(local.map(function (s) { return [s.id, s]; }));
+      const toUpsert = remote.filter(function (s) {
+        const existing = localMap.get(s.id);
+        if (!existing) return true;
+        return !existing.completed_at || (s.completed_at && s.completed_at >= existing.completed_at);
+      });
+      if (toUpsert.length) {
+        await window.CardedDB.bulkPut("study_sessions", toUpsert);
+      }
+    } catch (err) {
+      console.error("study_sessions sync failed:", err);
+    }
+  }
+
   async function refetchLatest() {
     if (!activeUserId) return null;
     const bundle = await window.CardedSupabaseDB.fetchAllUserData(activeUserId);
@@ -330,10 +351,13 @@
 
     if (online) {
       await refetchLatest();
+      await syncStudySessions(userId);
       await unsubscribeAllRealtime();
       subscribeTable("folders", `user_id=eq.${activeUserId}`);
       subscribeTable("sets", `user_id=eq.${activeUserId}`);
       subscribeTable("cards", `user_id=eq.${activeUserId}`);
+      subscribeTable("user_card_progress", `user_id=eq.${activeUserId}`);
+      subscribeTable("user_stats", `user_id=eq.${activeUserId}`);
     }
 
     return window.CardedDB.getAllUserData(userId);
@@ -349,6 +373,7 @@
     consecutiveFailures = 0;
     dispatchConnectivity();
     flushQueue();
+    if (activeUserId) syncStudySessions(activeUserId);
   });
 
   window.addEventListener("offline", function () {
@@ -372,6 +397,7 @@
     refetchLatest,
     refreshOnlineState,
     syncMutation,
+    syncStudySessions,
     unsubscribeAllRealtime,
   };
 })();

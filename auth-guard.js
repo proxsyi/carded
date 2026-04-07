@@ -3,6 +3,7 @@
 
   const RETURN_URL_KEY = "carded_return_url";
   const LOCAL_MODE_KEY = "carded_local_mode";
+  const IOS_SESSION_KEY = "carded_ios_session";
   const PUBLIC_PATHS = new Set([
     window.BASE_PATH,
     window.BASE_PATH + "/login",
@@ -22,6 +23,30 @@
 
   function exitLocalMode() {
     window.CardedUtils && window.CardedUtils.safeRemove(LOCAL_MODE_KEY);
+  }
+
+  // iOS PWA: WebKit kills sessionStorage on app restart. We back up tokens to
+  // localStorage and restore them before Supabase's own getSession() runs.
+  function persistSessionTokens(session) {
+    if (!session || !session.access_token) {
+      window.CardedUtils.safeRemove(IOS_SESSION_KEY);
+      return;
+    }
+    window.CardedUtils.safeSet(IOS_SESSION_KEY, JSON.stringify({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    }));
+  }
+
+  async function restoreSessionFromStorage() {
+    const raw = window.CardedUtils.safeGet(IOS_SESSION_KEY);
+    if (!raw) return;
+    try {
+      const tokens = JSON.parse(raw);
+      if (tokens && tokens.access_token && tokens.refresh_token) {
+        await window.supabaseClient.auth.setSession(tokens);
+      }
+    } catch (_) {}
   }
 
   let authSubscription = null;
@@ -69,9 +94,17 @@
   }
 
   async function getSession() {
-    const response = await window.supabaseClient.auth.getSession();
+    let response = await window.supabaseClient.auth.getSession();
     if (response.error) throw response.error;
-    const session = response.data.session;
+    let session = response.data.session;
+
+    // iOS PWA fallback: if Supabase has no session in memory, try to restore
+    // tokens we persisted to localStorage on the previous run.
+    if (!session) {
+      await restoreSessionFromStorage();
+      response = await window.supabaseClient.auth.getSession();
+      session = response.data ? response.data.session : null;
+    }
     // If session token looks expired, attempt refresh
     if (session && session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
       const refreshResponse = await window.supabaseClient.auth.refreshSession().catch(function () {
@@ -151,6 +184,13 @@
     if (authSubscription) return authSubscription;
 
     authSubscription = window.supabaseClient.auth.onAuthStateChange(function (event, session) {
+      // Keep localStorage backup in sync so iOS PWA can restore on next launch
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        persistSessionTokens(session);
+      } else if (event === "SIGNED_OUT") {
+        persistSessionTokens(null);
+      }
+
       window.dispatchEvent(new CustomEvent("carded:auth-state", {
         detail: { event: event, session: session },
       }));
