@@ -23,6 +23,8 @@
     <script>
       Sentry.onLoad(function() {
         Sentry.init({
+          dsn: "https://db8a21f989f91cec2aed1dd0fa6c04a0@o4511180207554560.ingest.us.sentry.io/4511180213977088",
+          sendDefaultPii: true,
           tracesSampleRate: 1.0,
           replaysSessionSampleRate: 0.1,
           replaysOnErrorSampleRate: 1.0,
