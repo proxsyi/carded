@@ -79,11 +79,13 @@
     root.textContent = message || "Something went wrong — please refresh.";
   }
 
-  window.addEventListener("error", function () {
+  window.addEventListener("error", function (event) {
+    if (window.Sentry) window.Sentry.captureException(event.error || new Error("Unhandled error"));
     renderFatalError("Something went wrong — please refresh.");
   });
 
-  window.addEventListener("unhandledrejection", function () {
+  window.addEventListener("unhandledrejection", function (event) {
+    if (window.Sentry) window.Sentry.captureException(event.reason || new Error("Unhandled rejection"));
     renderFatalError("Something went wrong — please refresh.");
   });
 
@@ -94,6 +96,25 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function showToast(message) {
+    if (window.CardedComponents && typeof window.CardedComponents.showToast === "function") {
+      window.CardedComponents.showToast(message);
+      return;
+    }
+    // Fallback for pages that load utils.js before components.js
+    const root = document.getElementById("toast-root");
+    if (!root) return;
+    root.textContent = "";
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.setAttribute("role", "status");
+    const p = document.createElement("p");
+    p.textContent = message;
+    toast.appendChild(p);
+    root.appendChild(toast);
+    window.setTimeout(function () { toast.remove(); }, 4000);
   }
 
   function withLoading(button, asyncFn) {
@@ -120,6 +141,7 @@
     safeGet,
     safeRemove,
     safeSet,
+    showToast,
     withLoading,
   };
 })();

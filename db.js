@@ -7,6 +7,8 @@
 
   const db = new window.Dexie("CardedDB");
 
+  // v1: initial schema — folders, sets, cards, user_card_progress, user_stats.
+  // No .upgrade() needed for the first version; Dexie creates the stores fresh.
   db.version(1).stores({
     folders: "id, user_id, order, updated_at",
     sets: "id, user_id, folder_id, order, updated_at",
@@ -31,6 +33,7 @@
   });
 
   // v3: add local_kv for device-local key-value storage (e.g. custom profile pictures).
+  // Dexie creates new stores automatically; no backfill needed for existing records.
   db.version(3).stores({
     folders: "id, user_id, order, updated_at",
     sets: "id, user_id, folder_id, order, updated_at",
@@ -38,11 +41,13 @@
     user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
     user_stats: "id, user_id",
     local_kv: "key",
-  }).upgrade(function (tx) {
+  }).upgrade(function (_tx) {
+    // local_kv is a new store — Dexie creates it; nothing to backfill.
     return Promise.resolve();
   });
 
   // v4: add study_sessions table for activity tracking and stats.
+  // Dexie creates new stores automatically; no backfill needed for existing records.
   db.version(4).stores({
     folders: "id, user_id, order, updated_at",
     sets: "id, user_id, folder_id, order, updated_at",
@@ -51,7 +56,8 @@
     user_stats: "id, user_id",
     local_kv: "key",
     study_sessions: "id, user_id, set_id, started_at",
-  }).upgrade(function (tx) {
+  }).upgrade(function (_tx) {
+    // study_sessions is a new store — Dexie creates it; nothing to backfill.
     return Promise.resolve();
   });
 

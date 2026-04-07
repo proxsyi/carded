@@ -3238,17 +3238,10 @@
     return name.replace(/[^\w\-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "cards";
   }
 
-  function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
+  const escapeHtml = window.CardedUtils.escapeHtml;
 
   function escapeAttribute(value) {
-    return escapeHtml(value);
+    return window.CardedUtils.escapeHtml(value);
   }
 
   function shuffleArray(list) {
