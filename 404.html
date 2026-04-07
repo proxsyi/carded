@@ -13,6 +13,16 @@
     <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
     <link rel="manifest" href="/carded/manifest.webmanifest">
     <link rel="stylesheet" href="/carded/styles.css">
+    <script src="https://js.sentry-cdn.com/db8a21f989f91cec2aed1dd0fa6c04a0.min.js" crossorigin="anonymous"></script>
+    <script>
+      Sentry.onLoad(function() {
+        Sentry.init({
+          tracesSampleRate: 1.0,
+          replaysSessionSampleRate: 0.1,
+          replaysOnErrorSampleRate: 1.0,
+        });
+      });
+    </script>
   </head>
   <body>
     <main class="legal-page" id="main">
