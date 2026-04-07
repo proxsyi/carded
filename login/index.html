@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <script src="https://js.sentry-cdn.com/db8a21f989f91cec2aed1dd0fa6c04a0.min.js" crossorigin="anonymous"></script>
     <script>
-      Sentry.onLoad(function() {
+      window.sentryOnLoad = function() {
         Sentry.init({
           dsn: "https://db8a21f989f91cec2aed1dd0fa6c04a0@o4511180207554560.ingest.us.sentry.io/4511180213977088",
           sendDefaultPii: true,
@@ -26,7 +26,7 @@
           replaysSessionSampleRate: 0.1,
           replaysOnErrorSampleRate: 1.0,
         });
-      });
+      };
     </script>
     <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
