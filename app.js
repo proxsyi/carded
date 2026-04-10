@@ -2295,7 +2295,7 @@
       order: nextOrder(state.folders),
     };
     await persistEntity("folders", "insert", folderToRow(folder));
-    state.folders.push(folder);
+    if (!state.folders.some((f) => f.id === folder.id)) state.folders.push(folder);
     return folder;
   }
 
@@ -2311,7 +2311,7 @@
       order: nextOrder(state.sets.filter((item) => item.folderId === folderId)),
     };
     await persistEntity("sets", "insert", setToRow(set));
-    state.sets.push(set);
+    if (!state.sets.some((s) => s.id === set.id)) state.sets.push(set);
     return set;
   }
 
@@ -2328,7 +2328,7 @@
       order: nextOrder(getCardsForSet(setId)),
     };
     await persistEntity("cards", "insert", cardToRow(card));
-    state.cards.push(card);
+    if (!state.cards.some((c) => c.id === card.id)) state.cards.push(card);
     return card;
   }
 
@@ -2450,7 +2450,8 @@
     for (const card of newCards) {
       await persistEntity("cards", "insert", cardToRow(card));
     }
-    state.cards.push(...newCards);
+    const existingIds = new Set(state.cards.map((c) => c.id));
+    state.cards.push(...newCards.filter((c) => !existingIds.has(c.id)));
     return { imported: newCards.length, skipped };
   }
 
