@@ -6,13 +6,18 @@
     <title>Carded — Page Not Found</title>
     <meta name="description" content="Carded page not found.">
     <meta name="theme-color" content="#1e1e2e">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="dark light">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="robots" content="noindex">
     <link rel="icon" href="/carded/assets/favicon.png">
     <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
     <link rel="manifest" href="/carded/manifest.webmanifest">
-    <link rel="stylesheet" href="/carded/styles.css">
+    <link rel="preconnect" href="https://browser.sentry-cdn.com" crossorigin>
+    <link rel="dns-prefetch" href="https://browser.sentry-cdn.com">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://browser.sentry-cdn.com; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co https://*.sentry.io https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; form-action 'self'; worker-src blob:; frame-ancestors 'none';">
+    <meta name="referrer" content="no-referrer">
+    <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <script src="https://browser.sentry-cdn.com/10.47.0/bundle.min.js" crossorigin="anonymous"></script>
     <script>
       Sentry.init({
@@ -20,7 +25,7 @@
         sendDefaultPii: true,
       });
     </script>
-
+    <script src="/carded/theme.js?v=4.0.0"></script>
   </head>
   <body>
     <main class="legal-page" id="main">

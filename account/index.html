@@ -7,22 +7,28 @@
     <title>Carded — Settings</title>
     <meta name="description" content="Manage your Carded account, preferences, and data.">
     <meta name="theme-color" content="#1e1e2e">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="dark light">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="robots" content="noindex">
     <link rel="icon" href="/carded/assets/favicon.png">
     <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
     <link rel="manifest" href="/carded/manifest.webmanifest">
+    <link rel="preconnect" href="https://browser.sentry-cdn.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://uctnhfasholeuyxqulmd.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="https://browser.sentry-cdn.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://uctnhfasholeuyxqulmd.supabase.co">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://browser.sentry-cdn.com; connect-src 'self' https://uctnhfasholeuyxqulmd.supabase.co wss://uctnhfasholeuyxqulmd.supabase.co https://*.sentry.io https://cdn.jsdelivr.net https://browser.sentry-cdn.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://browser.sentry-cdn.com; img-src 'self' data: https: blob:; font-src 'self'; form-action 'self' https://accounts.google.com https://github.com https://uctnhfasholeuyxqulmd.supabase.co; worker-src blob:; frame-ancestors 'none';">
     <meta name="referrer" content="no-referrer">
     <link rel="stylesheet" href="/carded/styles.css?v=4.0.0">
     <!-- Cropper.js for custom profile picture cropping -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" integrity="sha384-6LFfkTKLRlzFtgx8xsWyBdKGpcMMQTkv+dB7rAbugeJAu1Ym2q1Aji1cjHBG12Xh" crossorigin="anonymous">
     <!-- Chart.js for stats charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous" defer></script>
     <!-- JSZip for zip export/import -->
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous" defer></script>
     <script src="https://browser.sentry-cdn.com/10.47.0/bundle.min.js" crossorigin="anonymous"></script>
     <script>
       Sentry.init({
@@ -34,7 +40,7 @@
     <script src="/carded/theme.js?v=4.0.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js" integrity="sha384-uVMuH5/xk4w+/rhlrEukQI+mFsJdTZulzWiDg+IWJfR8R6SUvJtEj4ZEOSeMG1+W" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1" integrity="sha384-0VpB0wAYDdhWCEv3+IjT0Z9Kgpvszkf70RFX3ro7l4QR5nywxsMaOpmvZKsfRF8I" crossorigin="anonymous" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js" integrity="sha384-jrOgQzBlDeUNdmQn3rUt/PZD+pdcRBdWd/HWRqRo+n2OR2QtGyjSaJC0GiCeH+ir" crossorigin="anonymous" defer></script>
     <script src="/carded/config.js?v=4.0.0" defer></script>
     <script src="/carded/utils.js?v=4.0.0" defer></script>
     <script src="/carded/auth-guard.js?v=4.0.0" defer></script>
