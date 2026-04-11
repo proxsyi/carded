@@ -2,7 +2,7 @@
   "use strict";
 
   const BASE_PATH = "/carded";
-  const APP_VERSION = "4.0.0";
+  const APP_VERSION = "5.0.0";
   const DEBUG = false;
   const DELETION_GRACE_PERIOD_DAYS = 30;
   const SUPABASE_URL = "https://uctnhfasholeuyxqulmd.supabase.co";

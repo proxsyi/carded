@@ -33,6 +33,9 @@
     toastTimer: null,
     quizSession: null,
     studySession: null,
+    // Community: loaded async after init, keyed by item_id for quick lookup
+    myPublishByItemId: new Map(), // item_id → community_publishes row
+    mySharedLinkByItemId: new Map(), // item_id → shared_links row
   };
 
   const els = {
@@ -169,6 +172,10 @@
       }
       await loadAll(bundle);
       await cleanOrphanedLocalData();
+      // Load community context in background (non-blocking)
+      if (!state.localMode && window.CardedSupabaseDB) {
+        loadCommunityContext().catch(function () {});
+      }
     } catch (error) {
       if (error && error.name === "OpenFailedError") {
         showStorageError();
@@ -217,6 +224,10 @@
     if (window.CardedWalkthrough) {
       setTimeout(function () { window.CardedWalkthrough.maybeAutoStart(); }, 800);
     }
+    // Check for orphaned community adds (non-blocking, shown after walkthrough)
+    if (!state.localMode) {
+      setTimeout(function () { checkCommunityOrphans(); }, 1200);
+    }
   }
 
   function showStorageError() {
@@ -255,6 +266,54 @@
         backdrop.remove();
         resolve("fresh");
       });
+    });
+  }
+
+  async function loadCommunityContext() {
+    if (!state.userId || state.localMode) return;
+    try {
+      const [publishes, sharedLinks] = await Promise.all([
+        window.CardedSupabaseDB.getUserPublishes(state.userId),
+        window.CardedSupabaseDB.getUserSharedLinks(state.userId),
+      ]);
+      state.myPublishByItemId = new Map((publishes || []).map(function (p) { return [p.item_id, p]; }));
+      state.mySharedLinkByItemId = new Map((sharedLinks || []).map(function (l) { return [l.item_id, l]; }));
+      render(); // Re-render tiles with correct Publish/Share button state
+    } catch (_) {}
+  }
+
+  async function checkCommunityOrphans() {
+    if (!state.userId || state.localMode || !window.CardedSupabaseDB) return;
+    try {
+      const orphans = await window.CardedSupabaseDB.getOrphanedAdds(state.userId);
+      if (!orphans || orphans.length === 0) return;
+      showOrphanModal(orphans, 0);
+    } catch (_) {}
+  }
+
+  function showOrphanModal(orphans, index) {
+    if (index >= orphans.length) return;
+    const orphan = orphans[index];
+    const title = (orphan.community_publishes && orphan.community_publishes.title) || "A community item";
+    window.CardedComponents.showModal({
+      title: "Community content removed",
+      copy: `"${title}" was removed from Community. Keep a local copy in your library?`,
+      confirmLabel: "Keep copy",
+      cancelLabel: "Remove",
+      onConfirm: async function () {
+        try {
+          await window.CardedSupabaseDB.markAddNotified(orphan.id);
+          await window.CardedDB.put("community_adds", { ...orphan, orphan_notified: true }).catch(function () {});
+        } catch (_) {}
+        showOrphanModal(orphans, index + 1);
+      },
+      onCancel: async function () {
+        try {
+          await window.CardedSupabaseDB.deleteCommunityAdd(orphan.id);
+          await window.CardedDB.deleteById("community_adds", orphan.id).catch(function () {});
+        } catch (_) {}
+        showOrphanModal(orphans, index + 1);
+      },
     });
   }
 
@@ -942,7 +1001,6 @@
       </a>
     `;
     updateTopbarAvatar();
-    // Wire theme toggle
     const toggleBtn = els.headerActions.querySelector("[data-theme-toggle]");
     if (toggleBtn && window.CardedTheme) {
       toggleBtn.addEventListener("click", function () {
@@ -1082,6 +1140,7 @@
           </div>
           <div class="set-toolbar">
             <button class="ghost-button" data-action="export-set" data-set-id="${set.id}">Export .txt</button>
+            ${renderPublishShareButtons("set", set.id)}
             <button class="button" data-action="show-study-modal" data-set-id="${set.id}" ${cards.length ? "" : "disabled"}>Study</button>
             <button class="danger-button" data-action="delete-set" data-set-id="${set.id}">Delete set</button>
           </div>
@@ -1412,6 +1471,19 @@
     return `<div class="standalone-dropzone" data-drop-standalone>Drop a set here to make it standalone</div>`;
   }
 
+  function renderPublishShareButtons(itemType, itemId) {
+    if (state.localMode) return ""; // no community in local mode
+    const publish = state.myPublishByItemId.get(itemId);
+    const shareLink = state.mySharedLinkByItemId.get(itemId);
+    const publishBtn = publish
+      ? `<button class="icon-button community-published-badge" aria-label="Unpublish from community" data-action="unpublish-item" data-publish-id="${escapeAttribute(publish.id)}" data-item-id="${escapeAttribute(itemId)}">✓ Public</button>`
+      : `<button class="icon-button" aria-label="Publish to community" data-action="publish-item" data-item-type="${escapeAttribute(itemType)}" data-item-id="${escapeAttribute(itemId)}">Publish</button>`;
+    const shareBtn = shareLink
+      ? `<button class="icon-button" aria-label="Copy share link" data-action="copy-share-link" data-share-id="${escapeAttribute(shareLink.id)}">Share ✓</button>`
+      : `<button class="icon-button" aria-label="Create private share link" data-action="create-share-link" data-item-type="${escapeAttribute(itemType)}" data-item-id="${escapeAttribute(itemId)}">Share</button>`;
+    return publishBtn + shareBtn;
+  }
+
   function renderFolderTile(folder) {
     const sets = state.sets.filter((item) => item.folderId === folder.id);
     const totalCards = sets.reduce((sum, item) => sum + getCardsForSet(item.id).length, 0);
@@ -1429,6 +1501,7 @@
         <div class="tile__footer">
           <div class="tile__actions">
             <button class="icon-button" aria-label="Export folder" data-action="export-folder" data-folder-id="${folder.id}">Export</button>
+            ${renderPublishShareButtons("folder", folder.id)}
             <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
         </div>
@@ -1461,6 +1534,7 @@
         </div>
         <div class="tile__footer">
           <div class="tile__actions">
+            ${renderPublishShareButtons("set", set.id)}
             <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
         </div>
@@ -1537,6 +1611,142 @@
       </section>
     `;
   }
+
+  // ── Community publish/share handlers ──────────────────────────────────────────
+
+  const MAX_PUBLISHES = 10;
+  const MIN_CARDS_SET = 5;
+  const MAX_CARDS_SET = 500;
+  const MIN_SETS_FOLDER = 2;
+  const MAX_SETS_FOLDER = 20;
+
+  async function handlePublishItem(itemType, itemId) {
+    if (!state.userId || state.localMode) return;
+    // Validate limits
+    if (state.myPublishByItemId.size >= MAX_PUBLISHES) {
+      window.CardedComponents.showModal({
+        title: "Publish limit reached",
+        copy: `You can have up to ${MAX_PUBLISHES} active community publishes. Unpublish an item first.`,
+        confirmLabel: "OK",
+        cancelLabel: null,
+      });
+      return;
+    }
+    // Gather item metadata
+    let title = "", cardCount = 0, setCount = 0;
+    if (itemType === "set") {
+      const set = state.sets.find(function (s) { return s.id === itemId; });
+      if (!set) return;
+      title = set.name;
+      cardCount = getCardsForSet(itemId).length;
+      if (cardCount < MIN_CARDS_SET || cardCount > MAX_CARDS_SET) {
+        showToast(`Sets must have ${MIN_CARDS_SET}–${MAX_CARDS_SET} cards to publish (this one has ${cardCount}).`);
+        return;
+      }
+    } else {
+      const folder = getFolder(itemId);
+      if (!folder) return;
+      title = folder.name;
+      const folderSets = state.sets.filter(function (s) { return s.folderId === itemId; });
+      setCount = folderSets.length;
+      if (setCount < MIN_SETS_FOLDER || setCount > MAX_SETS_FOLDER) {
+        showToast(`Folders must have ${MIN_SETS_FOLDER}–${MAX_SETS_FOLDER} sets to publish (this one has ${setCount}).`);
+        return;
+      }
+    }
+
+    if (window.CardedCommunity) {
+      window.CardedCommunity.showPublishModal({
+        item_type: itemType,
+        item_id: itemId,
+        title,
+        cardCount,
+        setCount,
+        userId: state.userId,
+        onSuccess: async function () {
+          await loadCommunityContext();
+          showToast("Published to Community.", "success");
+        },
+      });
+    }
+  }
+
+  async function handleUnpublishItem(publishId, itemId) {
+    window.CardedComponents.showModal({
+      title: "Unpublish from Community?",
+      copy: "This removes your content from Community. Users who added it will be offered a local copy.",
+      confirmLabel: "Unpublish",
+      danger: true,
+      onConfirm: async function () {
+        try {
+          await window.CardedSupabaseDB.deletePublish(publishId);
+          state.myPublishByItemId.delete(itemId);
+          render();
+          showToast("Unpublished.", "success");
+        } catch (_) {
+          showToast("Could not unpublish. Try again.");
+        }
+      },
+    });
+  }
+
+  async function handleCreateShareLink(itemType, itemId) {
+    if (!state.userId || state.localMode) return;
+    try {
+      const link = await window.CardedSupabaseDB.createSharedLink(state.userId, {
+        item_type: itemType,
+        item_id: itemId,
+      });
+      state.mySharedLinkByItemId.set(itemId, link);
+      render();
+      const url = `${window.location.origin}${window.BASE_PATH}/community/?shared=${encodeURIComponent(link.id)}`;
+      await copyToClipboard(url);
+      showToast("Share link copied to clipboard.", "success");
+    } catch (_) {
+      showToast("Could not create share link. Try again.");
+    }
+  }
+
+  async function handleRevokeShareLink(shareId, itemId) {
+    try {
+      await window.CardedSupabaseDB.deleteSharedLink(shareId);
+      state.mySharedLinkByItemId.delete(itemId);
+      render();
+      showToast("Share link revoked.", "success");
+    } catch (_) {
+      showToast("Could not revoke link. Try again.");
+    }
+  }
+
+  function handleCopyShareLink(shareId) {
+    const url = `${window.location.origin}${window.BASE_PATH}/community/?shared=${encodeURIComponent(shareId)}`;
+    copyToClipboard(url).then(function () {
+      showToast("Share link copied to clipboard.", "success");
+    }).catch(function () {
+      showToast(url);
+    });
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    // Fallback
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        resolve();
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // ── End community handlers ─────────────────────────────────────────────────────
 
   async function onDocumentClick(event) {
     const target = event.target.closest("[data-action], [data-open-folder], [data-open-set], .inline-editable");
@@ -1680,6 +1890,21 @@
         }
         break;
       }
+      case "publish-item":
+        handlePublishItem(target.dataset.itemType, target.dataset.itemId);
+        break;
+      case "unpublish-item":
+        handleUnpublishItem(target.dataset.publishId, target.dataset.itemId);
+        break;
+      case "create-share-link":
+        handleCreateShareLink(target.dataset.itemType, target.dataset.itemId);
+        break;
+      case "revoke-share-link":
+        handleRevokeShareLink(target.dataset.shareId, target.dataset.itemId);
+        break;
+      case "copy-share-link":
+        handleCopyShareLink(target.dataset.shareId);
+        break;
       case "export-set":
         exportSet(target.dataset.setId);
         break;

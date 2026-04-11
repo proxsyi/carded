@@ -61,6 +61,23 @@
     return Promise.resolve();
   });
 
+  // v5: add community_adds (tracks community items the user has added to their library)
+  // and shared_links_cache (caches the user's own active shared links).
+  db.version(5).stores({
+    folders: "id, user_id, order, updated_at",
+    sets: "id, user_id, folder_id, order, updated_at",
+    cards: "id, user_id, set_id, order, updated_at",
+    user_card_progress: "id, user_id, card_id, updated_at, [user_id+card_id]",
+    user_stats: "id, user_id",
+    local_kv: "key",
+    study_sessions: "id, user_id, set_id, started_at",
+    community_adds: "id, user_id, publish_id",
+    shared_links_cache: "id, user_id, item_id",
+  }).upgrade(function (_tx) {
+    // New stores — Dexie creates them automatically; nothing to backfill.
+    return Promise.resolve();
+  });
+
   async function clearAllTables() {
     await db.transaction("rw", db.tables, async function () {
       await Promise.all(db.tables.map(function (table) {
@@ -181,6 +198,21 @@
     await db.local_kv.delete(key);
   }
 
+  async function getCommunityAdds(userId) {
+    return db.community_adds.where("user_id").equals(userId).toArray();
+  }
+
+  async function getOrphanedCommunityAdds(userId) {
+    return db.community_adds
+      .where("user_id").equals(userId)
+      .filter(function (row) { return row.is_orphaned === true && !row.orphan_notified; })
+      .toArray();
+  }
+
+  async function getSharedLinksCache(userId) {
+    return db.shared_links_cache.where("user_id").equals(userId).toArray();
+  }
+
   window.CardedDB = {
     bulkPut,
     clearAllTables,
@@ -190,6 +222,9 @@
     getAll,
     getAllUserData,
     getById,
+    getCommunityAdds,
+    getOrphanedCommunityAdds,
+    getSharedLinksCache,
     getStudySessions,
     kvDelete,
     kvGet,
