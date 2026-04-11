@@ -1,4 +1,4 @@
-const CACHE_NAME = "carded-static-v24";
+const CACHE_NAME = "carded-static-v25";
 const APP_SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -32,6 +32,7 @@ const APP_SHELL_ASSETS = [
   "./assets/icon-512.png",
   "./assets/favicon.png",
   "./assets/apple-touch-icon.png",
+  "./og-image.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.101.1",
   "https://cdn.jsdelivr.net/npm/dexie@4.4.2/dist/dexie.min.js",
   "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js",
