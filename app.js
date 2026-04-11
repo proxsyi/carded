@@ -1471,10 +1471,21 @@
     return `<div class="standalone-dropzone" data-drop-standalone>Drop a set here to make it standalone</div>`;
   }
 
-  function renderPublishShareButtons(itemType, itemId) {
+  function renderPublishShareButtons(itemType, itemId, compact) {
     if (state.localMode) return ""; // no community in local mode
     const publish = state.myPublishByItemId.get(itemId);
     const shareLink = state.mySharedLinkByItemId.get(itemId);
+    if (compact) {
+      // Compact chip buttons for inside tile cards
+      const publishBtn = publish
+        ? `<button class="tile-action tile-action--success" aria-label="Unpublish from community" data-action="unpublish-item" data-publish-id="${escapeAttribute(publish.id)}" data-item-id="${escapeAttribute(itemId)}">✓ Public</button>`
+        : `<button class="tile-action" aria-label="Publish to community" data-action="publish-item" data-item-type="${escapeAttribute(itemType)}" data-item-id="${escapeAttribute(itemId)}">Publish</button>`;
+      const shareBtn = shareLink
+        ? `<button class="tile-action tile-action--success" aria-label="Copy share link" data-action="copy-share-link" data-share-id="${escapeAttribute(shareLink.id)}">Share ✓</button>`
+        : `<button class="tile-action" aria-label="Create private share link" data-action="create-share-link" data-item-type="${escapeAttribute(itemType)}" data-item-id="${escapeAttribute(itemId)}">Share</button>`;
+      return publishBtn + shareBtn;
+    }
+    // Full-size buttons for set toolbar / other contexts
     const publishBtn = publish
       ? `<button class="icon-button community-published-badge" aria-label="Unpublish from community" data-action="unpublish-item" data-publish-id="${escapeAttribute(publish.id)}" data-item-id="${escapeAttribute(itemId)}">✓ Public</button>`
       : `<button class="icon-button" aria-label="Publish to community" data-action="publish-item" data-item-type="${escapeAttribute(itemType)}" data-item-id="${escapeAttribute(itemId)}">Publish</button>`;
@@ -1500,9 +1511,9 @@
         </div>
         <div class="tile__footer">
           <div class="tile__actions">
-            <button class="icon-button" aria-label="Export folder" data-action="export-folder" data-folder-id="${folder.id}">Export</button>
-            ${renderPublishShareButtons("folder", folder.id)}
-            <button class="icon-button" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
+            <button class="tile-action" aria-label="Export folder" data-action="export-folder" data-folder-id="${folder.id}">Export</button>
+            ${renderPublishShareButtons("folder", folder.id, true)}
+            <button class="tile-action tile-action--danger" aria-label="Delete folder" data-action="delete-folder" data-folder-id="${folder.id}">Delete</button>
           </div>
         </div>
       </article>
@@ -1534,8 +1545,8 @@
         </div>
         <div class="tile__footer">
           <div class="tile__actions">
-            ${renderPublishShareButtons("set", set.id)}
-            <button class="icon-button" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
+            ${renderPublishShareButtons("set", set.id, true)}
+            <button class="tile-action tile-action--danger" aria-label="Delete set" data-action="delete-set" data-set-id="${set.id}">Delete</button>
           </div>
         </div>
       </article>
