@@ -647,6 +647,7 @@ select:focus-visible,
   gap: 14px;
   min-height: 190px;
   padding: 20px;
+  overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.15s ease;
 }
@@ -761,7 +762,20 @@ select:focus-visible,
 .tile__actions,
 .card-row__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Compact button sizing inside tile action rows */
+.tile__actions .ghost-button,
+.tile__actions .icon-button,
+.tile__actions .danger-button,
+.tile__actions .button,
+.tile__actions .community-published-badge {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  border-radius: var(--radius-sm);
 }
 
 .landing-grid .panel {
@@ -2243,45 +2257,45 @@ kbd {
 
 .topbar__nav {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch; /* fill topbar height so underline sits at the bottom edge */
+  align-self: stretch;  /* stretch to full topbar height (overrides align-items:center) */
+  gap: 0;
   flex: 1;
-  padding: 0 16px;
+  padding: 0 8px;
 }
 
 .topbar__nav-link {
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: var(--radius-md);
+  padding: 0 16px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px; /* overlap topbar border so accent line sits flush at edge */
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: color 0.15s ease, background 0.15s ease;
   white-space: nowrap;
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .topbar__nav-link:hover {
   color: var(--text-primary);
-  background: var(--bg-tertiary);
 }
 
 .topbar__nav-link.active,
 .topbar__nav-link[aria-current="page"] {
   color: var(--accent);
-  background: var(--accent-subtle);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
 }
 
 @media (max-width: 428px) {
   .topbar__nav {
-    padding: 0 8px;
-    gap: 2px;
+    padding: 0 4px;
   }
   .topbar__nav-link {
-    padding: 0 8px;
-    font-size: 0.82rem;
+    padding: 0 12px;
+    font-size: 0.85rem;
   }
 }
 
