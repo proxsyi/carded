@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Script order: config -> utils -> auth-guard -> db -> auth -> supabase-db -> sync -> app -->
+    <!-- Script order: config -> utils -> components -> db -> auth -> supabase-db -> community -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carded — Study</title>
-    <meta name="description" content="Study your Carded flashcards with focused review sessions.">
+    <title>Carded — Community</title>
+    <meta name="description" content="Browse, discover, and add public flashcard sets and folders shared by the Carded community.">
     <meta name="theme-color" content="#1e1e2e">
     <meta name="color-scheme" content="dark light">
+    <meta name="robots" content="noindex">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="robots" content="noindex">
     <link rel="icon" href="/carded/assets/favicon.png">
     <link rel="apple-touch-icon" href="/carded/assets/apple-touch-icon.png">
     <link rel="manifest" href="/carded/manifest.webmanifest">
@@ -32,50 +32,43 @@
         sendDefaultPii: true,
       });
     </script>
-
     <script src="/carded/theme.js?v=5.0.0"></script>
     <script src="/carded/config.js?v=5.0.0" defer></script>
     <script src="/carded/utils.js?v=5.0.0" defer></script>
-    <script src="/carded/auth-guard.js?v=5.0.0" defer></script>
     <script src="/carded/components.js?v=5.0.0" defer></script>
     <script src="/carded/db.js?v=5.0.0" defer></script>
     <script src="/carded/auth.js?v=5.0.0" defer></script>
     <script src="/carded/supabase-db.js?v=5.0.0" defer></script>
-    <script src="/carded/sync.js?v=5.0.0" defer></script>
-    <script src="/carded/shortcuts.js?v=5.0.0" defer></script>
-    <script src="/carded/app.js?v=5.0.0" defer></script>
+    <script src="/carded/community.js?v=5.0.0" defer></script>
   </head>
   <body>
-    <a href="#app" class="skip-link">Skip to main content</a>
+    <a href="#community-app" class="skip-link">Skip to main content</a>
     <noscript><div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e2e;color:#e8e8ed;font-family:system-ui,sans-serif;text-align:center;padding:24px">Carded requires JavaScript. Please enable JavaScript in your browser.</div></noscript>
-    <div id="storage-error" class="storage-error hidden" role="alertdialog" aria-labelledby="storage-error-title" aria-describedby="storage-error-copy">
-      <div class="storage-error__panel">
-        <p class="eyebrow">Carded</p>
-        <h1 id="storage-error-title">Storage is unavailable</h1>
-        <p id="storage-error-copy">Carded needs browser storage to save your cards. Try using a regular browser window.</p>
+
+    <header class="topbar">
+      <div class="topbar__brand">
+        <a href="/carded/" class="brand-link" aria-label="Carded home">
+          <span class="brand-mark" aria-hidden="true">🃏</span>
+          <span class="brand-text">Carded</span>
+        </a>
       </div>
-    </div>
-    <div id="app-shell" class="app-shell hidden">
-      <header class="topbar">
-        <div class="topbar__brand">
-          <a href="/carded/library" class="brand-link" aria-label="Go to library">
-            <span class="brand-mark" aria-hidden="true">🃏</span>
-            <span class="brand-text">Carded</span>
-          </a>
-        </div>
-        <nav class="topbar__nav" aria-label="Main navigation">
-          <a href="/carded/library" class="topbar__nav-link">Library</a>
-          <a href="/carded/community/" class="topbar__nav-link">Community</a>
-        </nav>
-        <div class="topbar__actions" id="header-actions"></div>
-      </header>
-      <main id="app" class="page"></main>
-    </div>
+      <nav class="topbar__nav" aria-label="Main navigation">
+        <a href="/carded/library" class="topbar__nav-link">Library</a>
+        <a href="/carded/community/" class="topbar__nav-link active" aria-current="page">Community</a>
+      </nav>
+      <div class="topbar__actions" id="header-actions"></div>
+    </header>
+
+    <main id="community-app" class="page"></main>
+
     <div id="toast-root" class="toast-root" aria-live="assertive" aria-atomic="true"></div>
     <div id="modal-root"></div>
+
     <script defer>
       document.addEventListener("DOMContentLoaded", async function () {
-        await window.CardedAuthGuard.guardPage({ requiresAuth: true });
+        if (window.CardedCommunity) {
+          await window.CardedCommunity.init();
+        }
       });
     </script>
   </body>

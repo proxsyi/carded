@@ -366,28 +366,264 @@
     };
   }
 
+  // ── Community ─────────────────────────────────────────────────────────────────
+
+  function communityTable() {
+    return requireSupabase().from("community_publishes");
+  }
+
+  function communityAddsTable() {
+    return requireSupabase().from("community_adds");
+  }
+
+  function sharedLinksTable() {
+    return requireSupabase().from("shared_links");
+  }
+
+  const COMMUNITY_PAGE_SIZE = 20;
+
+  async function getCommunityPublishes({ search = "", filter = "all", sort = "newest", page = 0 } = {}) {
+    let query = communityTable()
+      .select("*, user_profiles(display_name, avatar_url)")
+      .range(page * COMMUNITY_PAGE_SIZE, (page + 1) * COMMUNITY_PAGE_SIZE - 1);
+
+    if (filter === "set") query = query.eq("item_type", "set");
+    else if (filter === "folder") query = query.eq("item_type", "folder");
+
+    if (search) query = query.ilike("title", `%${search}%`);
+
+    if (sort === "most-added") query = query.order("add_count", { ascending: false });
+    else if (sort === "alphabetical") query = query.order("title", { ascending: true });
+    else query = query.order("created_at", { ascending: false });
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function getCommunityPublish(publishId) {
+    const { data, error } = await communityTable()
+      .select("*, user_profiles(display_name, avatar_url)")
+      .eq("id", publishId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  async function getUserPublishes(userId) {
+    const { data, error } = await communityTable()
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function createPublish(userId, payload) {
+    return unwrap(
+      () => communityTable()
+        .insert({
+          user_id: userId,
+          item_type: payload.item_type,
+          item_id: payload.item_id,
+          title: payload.title,
+          description: payload.description || null,
+          category: payload.category || null,
+          card_count: payload.card_count || 0,
+          set_count: payload.set_count || 0,
+          add_count: 0,
+        })
+        .select()
+        .single()
+    );
+  }
+
+  async function updatePublish(publishId, payload) {
+    return unwrap(
+      () => communityTable()
+        .update(payload)
+        .eq("id", publishId)
+        .select()
+        .single()
+    );
+  }
+
+  async function deletePublish(publishId) {
+    return unwrap(
+      () => communityTable()
+        .delete()
+        .eq("id", publishId)
+    );
+  }
+
+  // Fetch content (sets + cards, or folder + sets) for a community publish
+  async function getCommunityPublishContent(publish) {
+    const sb = requireSupabase();
+    if (publish.item_type === "set") {
+      const { data: set } = await sb.from("sets").select("*").eq("id", publish.item_id).maybeSingle();
+      if (!set) return null;
+      const { data: cards } = await sb.from("cards").select("*").eq("set_id", publish.item_id).order("order");
+      return { set, cards: cards || [] };
+    }
+    if (publish.item_type === "folder") {
+      const { data: folder } = await sb.from("folders").select("*").eq("id", publish.item_id).maybeSingle();
+      if (!folder) return null;
+      const { data: sets } = await sb.from("sets").select("*").eq("folder_id", publish.item_id).order("order");
+      const setIds = (sets || []).map(function (s) { return s.id; });
+      let cards = [];
+      if (setIds.length) {
+        const { data: allCards } = await sb.from("cards").select("*").in("set_id", setIds).order("order");
+        cards = allCards || [];
+      }
+      return { folder, sets: sets || [], cards };
+    }
+    return null;
+  }
+
+  async function createCommunityAdd(userId, publishId) {
+    return unwrap(
+      () => communityAddsTable()
+        .insert({ user_id: userId, publish_id: publishId, is_orphaned: false, orphan_notified: false })
+        .select()
+        .single()
+    );
+  }
+
+  async function deleteCommunityAdd(addsId) {
+    return unwrap(
+      () => communityAddsTable()
+        .delete()
+        .eq("id", addsId)
+    );
+  }
+
+  async function getUserCommunityAdds(userId) {
+    const { data, error } = await communityAddsTable()
+      .select("*, community_publishes(id, title, item_type, item_id, user_id)")
+      .eq("user_id", userId);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function getOrphanedAdds(userId) {
+    const { data, error } = await communityAddsTable()
+      .select("*")
+      .eq("user_id", userId)
+      .eq("is_orphaned", true)
+      .eq("orphan_notified", false);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function markAddNotified(addsId) {
+    return unwrap(
+      () => communityAddsTable()
+        .update({ orphan_notified: true })
+        .eq("id", addsId)
+    );
+  }
+
+  // Increment/decrement add_count on community_publishes
+  async function adjustAddCount(publishId, delta) {
+    try {
+      const sb = requireSupabase();
+      // Read current count then update (best-effort; small race window is acceptable)
+      const { data } = await sb.from("community_publishes")
+        .select("add_count")
+        .eq("id", publishId)
+        .maybeSingle();
+      if (!data) return;
+      const newCount = Math.max(0, (data.add_count || 0) + delta);
+      await sb.from("community_publishes").update({ add_count: newCount }).eq("id", publishId);
+    } catch (_) {}
+  }
+
+  // Shared links
+  async function createSharedLink(userId, payload) {
+    return unwrap(
+      () => sharedLinksTable()
+        .insert({ user_id: userId, item_type: payload.item_type, item_id: payload.item_id })
+        .select()
+        .single()
+    );
+  }
+
+  async function deleteSharedLink(linkId) {
+    return unwrap(
+      () => sharedLinksTable()
+        .delete()
+        .eq("id", linkId)
+    );
+  }
+
+  async function getUserSharedLinks(userId) {
+    const { data, error } = await sharedLinksTable()
+      .select("*")
+      .eq("user_id", userId);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function getSharedLink(shareId) {
+    const { data, error } = await sharedLinksTable()
+      .select("*, user_profiles(display_name, avatar_url)")
+      .eq("id", shareId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  // Public user profile (display_name, bio, avatar_url)
+  async function getPublicProfile(userId) {
+    const { data, error } = await profilesTable()
+      .select("id, display_name, bio, avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   window.CardedSupabaseDB = {
+    adjustAddCount,
     cancelDeletion,
     checkPendingDeletion,
     createCard,
+    createCommunityAdd,
     createFolder,
+    createPublish,
     createSet,
+    createSharedLink,
     createStudySession,
-    fetchStudySessions,
-    setPendingDeletion,
+    deleteCommunityAdd,
+    deletePendingDeletion: cancelDeletion,
     deleteCard,
     deleteFolder,
+    deletePublish,
     deleteSet,
+    deleteSharedLink,
     fetchAllUserData,
+    fetchStudySessions,
     getCards,
+    getCommunityPublish,
+    getCommunityPublishContent,
+    getCommunityPublishes,
     getFolders,
     getOrCreateStats,
+    getOrphanedAdds,
     getProfile,
     getProgress,
+    getPublicProfile,
     getSets,
     getSetsByFolder,
+    getSharedLink,
+    getUserCommunityAdds,
+    getUserPublishes,
+    getUserSharedLinks,
+    markAddNotified,
+    setPendingDeletion,
     updateCard,
     updateFolder,
+    updatePublish,
     updateSet,
     updateStats,
     upsertProfile,
